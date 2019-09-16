@@ -1,0 +1,191 @@
+@startuml test
+
+class A {
+    + int A
+}
+A <|-- B
+
+class B {
+
+}
+
+@enduml
+
+@startuml test2
+class FRunnable {
+    + uint32 Run()
+    + void Stop()
+    + void Exit()
+}
+
+class FRunnableThread {
+    {static} +FRunnableThread* Create()
+}
+
+FRunnableThread o.. FRunnable
+
+class FQueuedThread {
+    # FRunnableThread* Thread
+
+    + bool Create(FQueuedThreadPool* InPool, uint32, EThreadPriority)
+    + boid DoWork(IQueuedWork* InQueuedWork)
+    + bool KillThread()
+}
+FQueuedThread --|> FRunnable
+FQueuedThread *-- FRunnableThread
+
+class FQueuedThreadPoolBase {
+    # TArray<IQueueWork* > QueueWork
+    # TArray<FQueuedThread*> QueuedThreads
+    # TArray<FQueuedThread*> AllThreads
+
+    + bool Create(uint32 InNumQueuedThreads, uint32, EThreadPriority)
+    + void AddQueueWork(IQueuedWork* InQueuedWork)
+}
+FQueuedThreadPoolBase *-- FQueuedThread
+
+package TaskGraph #GreenYellow/LightGoldenRodYellow {
+class FTaskGraphImplementation  #Yellow {
+    + FWorkerThread WorkerThreads[MAX_THREADS]
+    + FStallingTaskQueue<FBaseGraphTask, ...> IncomingAnyThreadTasks[]
+    __ Important Functions __
+    + void QueueTask(FBaseGraphTask* Task, ...)
+}
+FTaskGraphInterface <|-- FTaskGraphImplementation
+FTaskGraphImplementation *-- FWorkerThread
+FTaskGraphImplementation *-- FBaseGraphTask
+FTaskGraphImplementation *-- FStallingTaskQueue
+
+class FWorkerThread {
+    + FTaskThreadBase* TaskGraphWorker
+    + FRunnableThread* RunnableThread
+}
+FWorkerThread *--* FTaskThreadBase
+FWorkerThread *-- FRunnableThread
+
+class FTaskThreadBase {
+    # ENamedThreads::Type       ThreadId
+    # TArray<FBaseGraphTask*>   NewTasks
+    # FWorkerThread*            OwnerWorker
+
+    + void ProcessTasksUntilQuit(int32 QueueIndex)
+    + void ProcessTasksUntilIdle(int32 QueueIndex)
+    + void EnqueueFromThisThread(int32 QueueIndex, FBaseGraphTask* Task)
+    + void EnqueueFromOtherThread(int32 QueueIndex, FBaseGraphTask* Task)
+}
+FTaskThreadBase --|> FRunnable
+FTaskThreadBase *-- FBaseGraphTask
+
+class FBaseGraphTask {
+    + ENamedThreads::Type   ThreadToExecuteOn;
+}
+
+class FTaskThreadAnyThread {
+}
+FTaskThreadBase <|-- FTaskThreadAnyThread 
+
+
+class FTaskNamedTaskThread {
+    + FThreadTaskQueue      Queues[ENamedThreads::NumQueues = 2]
+}
+FTaskThreadBase <|-- FTaskNamedTaskThread 
+FTaskNamedTaskThread *-- FThreadTaskQueue
+
+class FThreadTaskQueue {
+    + FStallingTaskQueue<FBaseGraphTask, ...> StallQueue
+}
+FThreadTaskQueue *-- FStallingTaskQueue
+
+class FGraphTask #GreenYellow {
+    {static} + FConstructor Create() 
+}
+FGraphTask --|> FBaseGraphTask
+FGraphTask --* FGraphTask__FConstructor
+
+class FGraphTask__FConstructor {
+    TArray<FGraphEventRef>      Prerequisites
+    + FGraphEventRef ConstructAndDispatchWhenReady()
+    + FGraphTask* ConstructAndHold()
+}
+FGraphTask__FConstructor *-- FGraphEvent
+
+class FGraphEvent {
+    + TClosableLockFreePointerListUnorderedSingleConsumer<FBaseGraphTask, 0>	SubsequentList
+}
+}
+
+class TClosableLockFreePointerListUnorderedSingleConsumer
+{
+}
+TClosableLockFreePointerListUnorderedSingleConsumer --* FGraphEvent
+
+class FLockFreePointerListLIFOBase {
+    + FLockFreePointerListLIFORoot RootList
+}
+FLockFreePointerListLIFOBase <|-- TClosableLockFreePointerListUnorderedSingleConsumer
+FLockFreePointerListLIFOBase *-- FLockFreePointerListLIFORoot 
+
+class FLockFreePointerListLIFORoot {
+    - TDoublePtr Head
+}
+
+class FStallingTaskQueue {
+}
+FStallingTaskQueue *-- FLockFreePointerListLIFOBase
+@enduml
+
+@startuml skeletalmesh
+class FSkelMeshRenderSection {
+    uint16 MaterialIndex
+    uint32 BaseIndex
+    uint32 NumTriangles
+    bool bCastShadow
+    uint32 BaseVertexIndex
+    TArray<FBoneIndexType> BoneMap
+    uint3 NumVertices
+    FDuplicatedVerticesBuffer DuplicatedVerticesBuffer
+}
+
+class FSkeletalMeshLODRenderData {
+    + TArray<FKelMeshRenderSection> RenderSections
+    + FStaticMeshVertexBuffers StaticVertexBuffers
+    + FSkinWeightVertexBuffer SkinWeightVertexBuffer
+    + FMorphTargetVertexInfoBuffers MorphTargetVertexInfoBuffers
+}
+FSkeletalMeshLODRenderData *-- FSkelMeshRenderSection
+
+class FSkeletalMeshRenderData {
+    + TIndirectArray<FSkeletalMeshLODRenderData> LODRenderData
+
+    + void InitResources(bool bNeedsVertexColors, TArray<UMorphTarget*>& InMorphTargets)
+    + bool RequiresCPUSkinning(FeatureLevel) const
+}
+FSkeletalMeshRenderData *-- FSkeletalMeshLODRenderData
+
+class FSkeletalMeshLODInfo {
+}
+class FGPUSkinCacheEntry {
+}
+
+class FSkeletalMeshObject {
+    # FSkeletalMeshRenderData* SkeletalMeshRenderData
+    # TArray<FSkeletalMeshLODInfo> SkeletalmeshLODInfo
+    # FGPUSkinCacheEntry* SkinCacheEntry
+    # bool bUsePerBoneMotionBlur
+    # float MaxDistanceFactor
+    # bool bHasBeenUpdatedAtLeastOnce
+
+    __ Functions __
+    + void InitResources(USkinnedMeshComponent*)
+    + void Update()
+    + void GetSkinVertexFactory(const FSceneView*, int32 LODIndex, int32 ChunkIdx)
+    + bool IsCPUSkinned()
+}
+FSkeletalMeshObject *-- FSkeletalMeshRenderData
+FSkeletalMeshObject *-- FSkeletalMeshLODInfo
+FSkeletalMeshObject *-- FGPUSkinCacheEntry
+
+class FSkeletalMeshObjectGPUSkin {
+}
+FSkeletalMeshObjectGPUSkin --|> FSkeletalMeshObject
+@enduml
