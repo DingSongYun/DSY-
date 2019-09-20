@@ -1,0 +1,57 @@
+@startuml RenderCore
+note as 注解
+    <b>相关文件:
+    <color: royalBlue>Shader.h</color>
+    <color: royalBlue>VertexFactory.h</color>
+    <color: royalBlue>RenderResource.h</color>
+    <color: royalBlue>RHIResources.h</color>
+    <color: royalBlue>GlobalShader.h</color>
+    <color: royalBlue>MaterialShader.h</color>
+end note
+
+class FDeferredCleanupInterface{
+}
+FDeferredCleanupInterface <|-- FShaderResource
+FDeferredCleanupInterface <|-- FShader
+
+
+class FRenderResource {
+    InitRHI()
+    ReleaseRHI()
+    InitDynamicRHI()
+    ReleaseDynamicRHI()
+    InitResource()
+    ReleaseResource()
+}
+FRenderResource <|-- FVertexBuffer
+FRenderResource <|-- FVertexFactory
+FRenderResource <|-- FShaderResource
+
+class FRHIResource {
+}
+FRHIResource <|-- FRHIShader
+
+class FVertexFactory {
+}
+FVertexFactory <|-- FLocalVertexFactory
+FVertexFactory <|-- FGPUBaseSkinVertexFactory
+
+class FVertexBuffer {
+}
+FVertexBuffer <|-- FColorVertexBuffer
+FVertexBuffer <|-- FMorphVertexBuffer
+FVertexBuffer <|-- FSkinWeightVertexBuffer
+
+class FShader #YellowGreen{
+}
+FShader *-- FShaderResource
+FShader <|-- FGlobalShader
+FShader <|-- FMaterialShader
+FMaterialShader <|-- FMeshMaterialShader
+
+class FShaderResource {
+}
+FShaderResource *-- FRHIShader
+FShaderResource *-- FShaderTarget
+
+@enduml

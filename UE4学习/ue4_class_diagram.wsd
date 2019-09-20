@@ -185,7 +185,94 @@ FSkeletalMeshObject *-- FSkeletalMeshRenderData
 FSkeletalMeshObject *-- FSkeletalMeshLODInfo
 FSkeletalMeshObject *-- FGPUSkinCacheEntry
 
+class USkeletalMesh #GreenYellow {
+}
+USkeletalMesh *-- FSkeletalMeshRenderData
+
+class USkinnedMeshComponent #GreenYellow {
+    FSkeletalMeshObject*	MeshObject
+    -- 渲染相关方法 --
+    void CreateRenderState_Concurrent() override
+    void DestroyRenderState_Concurrent() override
+    void PostInitMeshObject()
+}
+USkinnedMeshComponent *-- FSkeletalMeshObjectGPUSkin
+
 class FSkeletalMeshObjectGPUSkin {
+    TArray<struct FSkeletalMeshObjectLOD> LODs
+    FDynamicSkelMeshObjectDataGPUSkin* DynamicData
+    FGraphEventRef RHIThreadFenceForDynamicData
 }
 FSkeletalMeshObjectGPUSkin --|> FSkeletalMeshObject
+FSkeletalMeshObjectGPUSkin *-- FSkeletalMeshObjectLOD
+FSkeletalMeshObjectGPUSkin *-- FDynamicSkelMeshObjectDataGPUSkin
+
+note top: 发送给RenderThread
+class FDynamicSkelMeshObjectDataGPUSkin
+{
+    int32 LODIndex
+    -- 变换矩阵 --
+    TArray<FMatrix> ReferenceToLocal
+    TArray<FMatrix> PreviousReferenceToLocal
+    -- Morph --
+    TArray<FActiveMophTarget> ActiveMorphTargets
+    TArray<float> MorphTargetWeights
+    -- Cloth 布料 --
+    FMatrix ClothObjectLocalToWorld
+}
+
+class FVertexFactoryData {
+    TArray<FGPUBaseSkinVertexFactory> VertexFactories
+    TArray<FGPUBaseSkinVertexFactory> MorphVertexFactories
+
+    __ Animation Instance __
+    TArray<FGPUBaseSkinVertexFactory> InstancedAnimWithTextureFactories 
+    TArray<FGPUBaseSkinVertexFactory> InstancedAnimationFactories
+}
+FVertexFactoryData *-- FGPUBaseSkinVertexFactory
+
+class FSkeletalMeshObjectLOD {
+    int32 LODIndex
+    FVertexFactoryData GPUSkinVertexFactories
+    __ 核心数据 __
+    FSkeletalmeshRenderData* SkelMeshRenderData
+    __ Vertex Buffer __
+    FMorphVertexBuffer MorphVertexBuffer
+    FSkinWeightVertexBuffer* MeshObjectWeightBuffer
+    FColorVertexBuffer* MeshObjectColorBuffer;
+}
+FSkeletalMeshObjectLOD *-- FVertexFactoryData 
+FSkeletalMeshObjectLOD *-- FMorphVertexBuffer 
+FSkeletalMeshObjectLOD *-- FSkinWeightVertexBuffer 
+FSkeletalMeshObjectLOD *-- FSkeletalMeshRenderData
+
+class FGPUBaseSkinVertexFactory {
+}
+FGPUBaseSkinVertexFactory <|-- TGPUSkinVertexFactory
+
+note right: 绑定到 GpuSkinVertexFactory.ush
+class TGPUSkinVertexFactory #LightBlue{
+}
+
+package RenderCore #GreenYellow/LightGoldenRodYellow {
+class FRenderResource {
+}
+FVertexBuffer --|> FRenderResource  
+FVertexFactory --|> FRenderResource  
+
+class FVertexFactory {
+}
+FGPUBaseSkinVertexFactory --|> FVertexFactory
+
+class FVertexBuffer {
+}
+FColorVertexBuffer --|> FVertexBuffer
+FMorphVertexBuffer --|> FVertexBuffer
+FSkinWeightVertexBuffer --|> FVertexBuffer
+
+class FColorVertexBuffer {
+}
+FSkeletalMeshObjectLOD *-- FColorVertexBuffer 
+
+}
 @enduml
