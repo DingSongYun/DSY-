@@ -1,0 +1,65 @@
+@startuml TickFlow
+class FTickFunction {
+}
+
+FTickFunction <|-- FActorTickFunction
+FTickFunction <|-- FActorComponentTickFunction
+
+class FTickTaskLevel {
+    FTickTaskSequencer& TickTaskSequencer
+    TArray<FTickFunction*> AllEnabledTickFunctions
+    FTickContext Context
+}
+ULevel *-- FTickTaskLevel
+FTickTaskLevel *-- FTickFunction
+FTickTaskLevel *-- FTickTaskSequencer
+FTickTaskLevel *-- FTickContext
+
+class FTickTaskSequencer {
+    TArray<FTickFunctionTask> TickTask
+    ETickingGroup WaitForTickGroup
+}
+FTickTaskSequencer *-- FTickFunctionTask
+
+class FTickFunctionTask {
+    FTickFunction Target
+    FTickContext Context
+}
+FTickFunctionTask *-- FTickFunction
+FTickFunctionTask *-- FTickContext
+
+class FTickTaskManager #YellowGreen{
+
+}
+FTickTaskManagerInterface <|-- FTickTaskManager
+
+@enduml
+
+@startuml TickFunction Register
+FTickFunction --> FTickTaskManager: AddTickFunction()
+FTickTaskManager --> FTickTaskLevel: AddTickFunction()
+@enduml
+
+@startuml FTickFunctionTask Register
+UWorld --> FTickTaskManager : StartFrame
+FTickTaskManager --> FTickTaskLevel : QueueAllTicks()
+FTickTaskLevel -> FTickFunction : QueueTickFunction(TTS, TickContext)
+FTickFunction -> FTickTaskSqeuencer : QueueTickTask(Prerequisites, TickFunction, TickContext)
+FTickTaskSqeuencer -> FTickTaskSqeuencer : StartTickTask(Prerequisites, TickFunction, TickContext)
+FTickTaskSqeuencer -> TGraphTask : CreateTask<FTickFunctionTask>()
+@enduml
+
+@startuml TickFunction Execution
+UWorld --> UWorld : Tick
+UWorld --> UWorld : RunTickGroup(TG_PrePhysics)
+UWorld --> FTickTaskManager : RunTickGroup(group)
+FTickTaskManager --> FTickTaskSequencer : ReleaseTickGroup(group)
+FTickTaskSequencer --> FTaskGraphImplementation : WaitUntilTasksComplete()
+FTaskGraphImplementation --> FTaskGraphImplementation : ProcessThreadUntilRequestReturn()
+FTaskGraphImplementation --> FNamedTaskThread : ProcessTasksUntilQuit()
+FNamedTaskThread --> FNamedTaskThread : ProcessTasksNamedThread()
+FNamedTaskThread --> FBaseGraphTask : Excute()
+FBaseGraphTask --> TGraphTask : ExecuteTask()
+TGraphTask --> FTickFuctionTask : DoTask()
+FTickFuctionTask --> FTickFuction : ExecuteTick()
+@enduml

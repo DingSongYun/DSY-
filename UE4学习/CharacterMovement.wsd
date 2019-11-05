@@ -1,0 +1,25 @@
+@startuml
+UMovementComponent <|-- UNavMovementComponent
+UNavMovementComponent <|-- UCharacterMovementComponent
+UPathFollowingComponent *-- UNavMovementComponent
+@enduml
+
+@startuml
+AAIController --> AAIController : MoveTo
+AAIController --> AAIController : RequestMove
+AAIController --> UPathFollowingComponent : RequestMove
+UPathFollowingComponent --> UPathFollowingComponent : UpdateMovementComonent
+UPathFollowingComponent --> UPathFollowingComponent : OnPathUpdate
+UPathFollowingComponent --> UPathFollowingComponent : SetMoveSegment
+@enduml
+
+@startuml
+FGraphTask --> UPathFollowingComponent : TickComponent
+UPathFollowingComponent --> UPathFollowingComponent : FollowingPathSegment
+UPathFollowingComponent --> UCharacterMovementComponent : RequestDirectMove
+FGraphTask --> UCharacterMovementComponent : TickComponent
+UCharacterMovementComponent --> UCharacterMovementComponent : PerformMovement
+UCharacterMovementComponent --> UCharacterMovementComponent : StartNewPhysics
+UCharacterMovementComponent --> UCharacterMovementComponent : PhysWalking
+UCharacterMovementComponent --> UCharacterMovementComponent : MoveAlongFloor
+@enduml
