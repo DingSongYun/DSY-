@@ -1,0 +1,98 @@
+@startuml GC Class Refs
+class FGCObject
+
+package UObjectGlobals.h #GreenYellow/LightGoldenRodYellow {
+class FReferenceCollector
+class FReferenceFinder
+}
+
+package FastReferenceCollector.h #GreenYellow/LightGoldenRodYellow {
+class FSimpleReferenceProcessorBase
+class TDefaultReferenceCollector
+FReferenceCollector <|-- TDefaultReferenceCollector
+class TFastReferenceCollector
+}
+
+package UObjectCluster.cpp #GreenYellow/LightGoldenRodYellow {
+class FClusterReferenceProcessor
+}
+
+package GarbageCollection.cpp #GreenYellow/LightGoldenRodYellow {
+class FGCReferenceProcessor
+{
+ + void HandleTokenStreamObjectReference()
+}
+}
+
+package ReferenceChainSearch.cpp #GreenYellow/LightGoldenRodYellow {
+class FDirectReferenceProcessor
+}
+
+package GarbageCollectionVerification.cpp #GreenYellow/LightGoldenRodYellow {
+class FDisregardSetReferenceProcessor
+class FClusterVerifyReferenceProcessor
+}
+
+FSimpleReferenceProcessorBase <|.. FClusterReferenceProcessor
+FSimpleReferenceProcessorBase <|.. FGCReferenceProcessor
+FSimpleReferenceProcessorBase <|.. FDirectReferenceProcessor
+FSimpleReferenceProcessorBase <|.. FDisregardSetReferenceProcessor
+FSimpleReferenceProcessorBase <|.. FClusterVerifyReferenceProcessor
+
+@enduml
+
+@startuml
+--> UWorld : Tick
+UWorld --> UEngine : ConditionalCollectGarbage()
+UEngine --> UEngine : TryCollectGarbage()
+UEngine --> UEngine : CollectGarbageInternal()
+UEngine --> FRealtimeGC : PerformReachabilityAnalysis()
+FRealtimeGC --> FRealtimeGC : PerformReachabilityAnalysisOnObjects()
+FRealtimeGC --> FastReferenceCollecor : CollectReferences
+FastReferenceCollecor --> FastReferenceCollecor : create and fire task FCollectorTaskProcessorTask
+FastReferenceCollecor --> FTaskGraphInterface : WaitUntilTasksComplete : chunk tasks of FCollectorTaskProcessorTask
+... Task 调度 ...
+FTaskGraphInterface --> FCollectorTaskProcessorTask : DoTask()
+FCollectorTaskProcessorTask --> FCollectorTaskQueue : DoTask()
+FCollectorTaskQueue --> FastReferenceCollecor : ProcessObjectArray()
+FastReferenceCollecor --> XXXXReferenceProcessor : HandleTokenStreamObjectReference()
+... 满足 GObjPurgeIsRequired 的话 ...
+UEngine --> UEngine : IncrementalPurgeGarbage()
+@enduml
+
+@startuml UEngine::ConditionalCollectGarbage()
+start
+
+if (bFuulPurgeTriggered) then(true)
+    : TryCollectGarbage();
+else(no)
+    : 检测World播放状态;
+    if (是否BeginPlay) then(true)
+        : 累加DeltaTime用来计算自上次GC到现在的时间;
+        : 获取进行GC的时间间隔;
+        note right 
+            <b>UEngine::GetTimeBetweenGarbageCollectionPasses()</b>
+            * 低内存时优化: 缩短GC间隔，加快GC
+            =====
+            几个全局变量:
+                GTimeBetweenPurgingPendingKillObjects
+                GLowMemoryMemoryThresholdMB
+                GLowMemoryTimeBetweenPurgingPendingKillObjects
+        end note
+        if (是否跳过本帧的GC) then(true)
+            : 重置跳过GC的Flag;
+        elseif ("没有GC Purge的请求" 并且 "满足GC时间间隔") then(true)
+            #HotPink: 进行下一步的引用搜索操作
+                ::PerformGarbageCollectionAndCleanupActors();
+        else(no)
+            #HotPink: GC的清理操作
+                ::IncrementalPurgeGarbage();
+        endif
+    endif
+endif
+
+: GC Frame计数;
+
+stop
+@enduml
+

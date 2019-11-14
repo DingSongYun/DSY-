@@ -1,0 +1,13 @@
+@startuml EngineStartUp
+class FEngineLoop
+{
+    + int32 PreInit()
+}
+IEngineLoop <|-- FEngineLoop
+@enduml
+
+@startuml Engine PreInit
+start
+: 
+end
+@enduml
