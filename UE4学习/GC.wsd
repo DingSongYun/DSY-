@@ -44,7 +44,22 @@ FSimpleReferenceProcessorBase <|.. FClusterVerifyReferenceProcessor
 @startuml
 --> UWorld : Tick
 UWorld --> UEngine : ConditionalCollectGarbage()
+UEngine --> UEngine : PerformGarbageCollectionAndCleanupActors()
+note left
+<b>PerformGarbageCollectionAndCleanupActors()</b>
+在这里会重置一些计数器
+    <b><i>TimeSinceLastPendingKillPurge</i></b>
+    <b><i>bFullPurgeTriggered</i></b>
+    <b><i>LastGCFrame</i></b>
+end note
 UEngine --> UEngine : TryCollectGarbage()
+note left
+<b>TryCollectGarbage()</b>
+1. GCLock => FGCSyncObject
+    <b>AcquireGCLock</b> && <b>ReleaseGCLOck</b>
+2. 有一个try-force的机制
+    <b>GNumAttemptsSinceLastGC</b>
+end note
 UEngine --> UEngine : CollectGarbageInternal()
 UEngine --> FRealtimeGC : PerformReachabilityAnalysis()
 FRealtimeGC --> FRealtimeGC : PerformReachabilityAnalysisOnObjects()
