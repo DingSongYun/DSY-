@@ -1,0 +1,559 @@
+@startuml Classes
+package DetourNavMesh.h #GreenYellow/LightGoldenRodYellow {
+class dtPoly
+class dtPolyDetail
+
+class dtLink
+class dtBVNode
+
+class dtOffMeshSegmentConnection
+class dtOffMeshConnection
+
+class dtCluster
+class dtClusterLink
+
+class dtMeshHeader
+class dtMeshTile
+class dtNavMeshParams
+
+class dtNavMesh
+{
+    __ 参见NavMesh::NavMeshOriginOffset __
+    float m_orig[3]
+
+    float m_tileWidth
+    float m_tileHeight
+    int m_maxTiles
+    dtMeshTile** m_posLookup
+    dtMeshTile* m_nextFree
+    dtMeshTile* m_tiles
+}
+
+class ReadTilesHelper
+note top : Add by UE4
+}
+
+dtNavMesh o.. dtNavMeshParams
+dtNavMesh o.. dtMeshTile
+
+dtMeshTile o.. dtMeshHeader
+dtMeshTile o.. dtPoly
+dtMeshTile o.. dtLink
+dtMeshTile o.. dtPolyDetail
+dtMeshTile o.. dtCluster
+dtMeshTile o.. dtClusterLink
+dtMeshTile o.. dtOffMeshConnection
+dtMeshTile o.. dtOffMeshSegmentConnection
+dtMeshTile o.. dtBVNode
+
+package DetourNavMeshQuery.h #GreenYellow/LightGoldenRodYellow {
+class dtQuerySpecialLinkFilter
+class dtQueryFilterData
+class dtQueryFilter
+class dtQueryResultPack
+class dtQueryResult
+class dtNavMeshQuery
+}
+
+dtNavMeshQuery o.. dtNavMesh
+@enduml
+
+@startuml Logic Flow
+== 编辑器NavMesh构建 ==
+group 编辑器NavMesh构建
+    --> UNavigationSystemV1 : <b>Tick Start</b>
+    group 初始化流程
+        UNavigationSystemV1 -> UNavigationSystemV1 : PerformNavigationBoundsUpdate
+        UNavigationSystemV1 -> UNavigationSystemV1 : ProcessRegistrationCandidates
+        UNavigationSystemV1 -> UNavigationSystemV1 : RegisterNavData
+        UNavigationSystemV1 -> ARecastNavMesh : ConditionalConstructGenerator
+        ARecastNavMesh -> FRecastNavMeshGenerator : Init
+        FRecastNavMeshGenerator -> FRecastNavMeshGenerator : <b><font color=red>ConstructTiledNavMesh</font></b>
+        FRecastNavMeshGenerator -> dtNavMesh : <b><font color=red>init(dtNavMeshParams)</font></b>
+    end
+    group 构建流程
+        UNavigationSystemV1 -> ARecastNavMesh : RebuildDirtyAreas
+        ANavigationData -> FRecastNavMeshGenerator : RebuildDirtyAreas
+        FRecastNavMeshGenerator -> FRecastNavMeshGenerator : <b><font color=red>MarkDirtyTiles</font></b>
+        note left
+            Setup Dirty Tile, 这里的Tile还不是真正的Tile
+            FNavigationDirtyArea 转化成 FPendingTileElement
+                =>> <b>FRecastNavMeshGenerator::PendingDirtyTiles</b>
+        end note
+
+        UNavigationSystemV1 -> ARecastNavMesh : TickAsyncBuild
+        ARecastNavMesh -> FRecastNavMeshGenerator : TickAsyncBuild
+        FRecastNavMeshGenerator -> FRecastNavMeshGenerator : ProcessTileTasks
+        FRecastNavMeshGenerator -> FRecastNavMeshGenerator : ProcessTileTasksAsync
+        FRecastNavMeshGenerator -> FRecastNavMeshGenerator : CreateTileGenerator
+        FRecastNavMeshGenerator -> FRecastTileGenerator : <b><font color=red>Setup</font></b>
+        FRecastNavMeshGenerator -> FRecastTileGeneratorTask : StartBackgroundTask
+        FRecastTileGeneratorTask --> FRecastTileGenerator : DoWork() 异步过程
+        FRecastTileGenerator -> FRecastTileGenerator : GenerateTile
+        FRecastTileGenerator -> FRecastTileGenerator : GenerateCompressedLayers
+        FRecastTileGenerator -> FRecastTileGenerator : RasterizeGeometry
+        FRecastTileGenerator -> Recast : rcRasterizeTriangles
+        note right
+            三角化过程
+        end note
+        FRecastTileGenerator -> FRecastTileGenerator : GenerateNavigationData
+        FRecastNavMeshGenerator -> FRecastNavMeshGenerator : AddGeneratedTiles
+        FRecastNavMeshGenerator -> dtNavMesh : addTile
+    end
+    <-- UNavigationSystemV1 : <b>Tick End</b>
+end
+== ==
+group 运行时NavMesh信息
+ARecastNavMesh -> ARecastNavMesh : SerializeRecastNavMesh
+ARecastNavMesh -> FPImplRecastNavMesh : Serialize
+FPImplRecastNavMesh -> dtNavMesh : <b><font color=red>init(dtNavMeshParams) & addTile()</b>
+note left
+定点化的话，我们需要替换这一步，加载我们的定点化数据
+end note
+end
+@enduml
+
+@startuml 寻路信息动态更新
+actor Outter
+Outter -> UNavigationSystemV1 : UpdateActorData
+UNavigationSystemV1 -> UNavigationSystemV1 : UpdateActorInNavOctree
+UNavigationSystemV1 -> UNavigationSystemV1 : UpdateActorInNavOctree
+UNavigationSystemV1 -> UNavigationSystemV1 : UpdateNavOctreeElement
+UNavigationSystemV1 -> UNavigationSystemV1 : RegisterNavOctreeElement
+note right
+ 更新<b>PendingOctreeUpdates</b>
+end note
+
+Outter -> UNavigationSystemV1 : Tick
+UNavigationSystemV1 -> UNavigationSystemV1 : AddElementToNavOctree
+note right 
+ 处理<b>PendingOctreeUpdates<b>
+end note
+UNavigationSystemV1 -> UNavigationSystemV1 : AddDirtyArea
+note right
+ 更新<b>DirtyAreas</b>
+end note
+
+Outter -> UNavigationSystemV1 : Tick
+UNavigationSystemV1 -> UNavigationSystemV1 : RebuildDirtyAreas
+UNavigationSystemV1 -> FRecastNavMeshGenerator : RebuildDirtyAreas
+FRecastNavMeshGenerator -> FRecastNavMeshGenerator : MarkDirtyTiles
+note right
+ 更新<b>PendingDirtyTiles</b>
+end note
+group 这里之后是的构建流程，并没有在这里贴全
+UNavigationSystemV1 -> ARecastNavMesh : TickAsyncBuild
+ARecastNavMesh -> FRecastNavMeshGenerator : TickAsyncBuild
+FRecastNavMeshGenerator -> FRecastNavMeshGenerator : ProcessTileTasks
+FRecastNavMeshGenerator -> FRecastNavMeshGenerator : ProcessTileTasksAsync
+end group
+@enduml
+
+@startuml Geometry信息跟寻路所需要的网格信息的数据流转换
+actor Outter 
+control UNavigationSystemV1
+entity FRecastNavMeshGenerator
+
+==Geometry信息的提取==
+group NavCollision
+-> UStaticMesh :PostLoad
+UStaticMesh -> UStaticMesh : CreateNavCollision
+UStaticMesh -> UNavCollision : Setup(UBodySetup)
+note right:  UBodySetup 含有刚体信息
+UNavCollision -> UNavCollision : <b><font color=red>GatherCollision(UBodySetup)</font></b>
+activate UNavCollision
+    UNavCollision -> FRecastNavMeshGenerator : <b><font color=red>ExportRigidBodyGeometry</font></b>
+    activate FRecastNavMeshGenerator
+    FRecastNavMeshGenerator -> RecastGeometryExport : <b><font color=green>ExportRigidBodyTriMesh</font></b>
+    FRecastNavMeshGenerator -> RecastGeometryExport : <b><font color=green>ExportRigidBodyConvexElements</font></b>
+    FRecastNavMeshGenerator -> RecastGeometryExport : <b><font color=green>ExportRigidBodyBoxElements</font></b>
+    FRecastNavMeshGenerator -> RecastGeometryExport : <b><font color=green>ExportRigidBodySphereElements</font></b>
+    deactivate FRecastNavMeshGenerator
+
+    UNavCollision -> FRecastNavMeshGenerator : <b><font color=red>ExportAggregatedGeometry</font></b>
+    activate FRecastNavMeshGenerator
+    FRecastNavMeshGenerator -> RecastGeometryExport : <b><font color=green>ExportRigidBodyConvexElements</font></b>
+    FRecastNavMeshGenerator -> RecastGeometryExport : <b><font color=green>ExportRigidBodyBoxElements</font></b>
+    FRecastNavMeshGenerator -> RecastGeometryExport : <b><font color=green>ExportRigidBodySphereElements</font></b>
+    deactivate FRecastNavMeshGenerator
+deactivate UNavCollision
+end group
+
+==Mesh Geometry 转换到 FNavigationOctreeElement==
+Outter -> UNavigationSystemV1 : ConditionalPopulateNavOctree 
+note right
+ 初始化八叉树(<b><i>NavOctree</i></b>)用来做信息管理
+end note
+UNavigationSystemV1 -> FNavigationOctree : 绑定<b>NavOctree->ComponentExportDelegate</b>
+note right
+    <b>FRecastNavMeshGenerator::ExportComponentGeometry</b>
+end note
+
+Outter -> UNavigationSystemV1 : AddElementToNavOctree (更新八叉树时)
+activate UNavigationSystemV1
+UNavigationSystemV1 -> FNavigationOctree : AddNode
+FNavigationOctree -> FNavigationOctree : 执行 <b>NavOctree->ComponentExportDelegate</b>进行Geometry的解析
+note right
+ 注意这里有个判断，
+ 只有在当前Geometry需要<b><font color=blue>bDoInstantGathering</font></b>
+ 才会执行ComponentExportDelegate做ComponentExport
+ 否则会当做<b><font color=blue>bPendingLazyGeometryGathering</font></b>
+ 这个布尔值会把Geometry的ComponentExport推迟到
+ <b><font color=blue>FRecastTileGenerator::GatherGeometry</font></b>里做
+end note
+FNavigationOctree -> FRecastNavMeshGenerator : 回调到这里: ExportComponentGeometry(<font color=pink>FNavigationOctreeElement.Data : FNavigationRelevantData</font>)
+    activate FRecastNavMeshGenerator
+    FRecastNavMeshGenerator -> RecastGeometryExport : ExportComponent(<font color=pink>FRecastGeometryExport</font>)
+    group 填充FRecastGeometryExport数据
+    RecastGeometryExport -> UStaticMeshComponent : DoCustomNavigableGeometryExport
+    UStaticMeshComponent -> UNavCollision : <b><font color=red>ExportGeometry</font></b>
+    activate UNavCollision
+    UNavCollision -> RecastGeometryExport : <b><font color=green>ExportCustomMesh(<font color=blue>ConvexCollision>)</font></b>
+    UNavCollision -> RecastGeometryExport : <b><font color=green>ExportCustomMesh(<font color=blue>TriMeshCollision)</font></b>
+    deactivate UNavCollision
+    end group
+    FRecastNavMeshGenerator -> RecastGeometryExport : CovertCoordDataToRecast
+    FRecastNavMeshGenerator -> RecastGeometryExport : StoreCollisionCache\n将<font color=pink>FRecastGeometryExport</font>中的数据反写到<font color=pink>FNavigationRelevantData</font>中,主要是填充<b><font color=blue>CollisionData</font></b>，这个数据之后在寻路网格体素化的过程中会用到
+    note right
+        以上的Export过程都是针对<font color=pink>FRecastGeometryExport</font>对象进行
+        Geometry的数据都被存放在<b>FRecastGeometryExport</b>的<b>VertexBuff</b>和<b>IndexBuffer</b>中
+        在<b>::StoreCollisionCache()</b>方法中，这两个Buffer会拼接到一块连续内存上放到<b>CollisionData之中</b>
+    end note
+    deactivate FRecastNavMeshGenerator
+
+deactivate UNavigationSystemV1
+
+==FNavigationOctreeElement 转换到 Recast体素化数据==
+Outter->FRecastNavMeshGenerator : GatherGeometry
+activate FRecastNavMeshGenerator
+    FRecastNavMeshGenerator->FRecastNavMeshGenerator : ValidateAndAppendGeometry(<font color=pink>FNavigationRelevantData</font>)
+    FRecastNavMeshGenerator->FRecastNavMeshGenerator : AppendGeometry(<font color=pink>FNavigationRelevantData.CollisionData</font>)
+    note right
+        这里<b><font color=blue>CollisionData</font></b>转换成<b><font color=blue>FRecastRawGeometryElement</font></b>
+        这里又会从<b>CollisionData</b>中解析出<b>VertextBuff</b>和<b>IndexBuffer</b>,可以跟<b>::StoreCollisionCache()</b>对比看
+    end note
+deactivate FRecastNavMeshGenerator
+@enduml
+
+@startuml 寻路过程
+actor User
+User -> AAIController : MoveToActor
+AAIController -> AAIController : MoveTo
+AAIController -> AAIController : FindPathRequest
+AAIController -> UNavigationSystemV1 : FindPathSync
+UNavigationSystemV1 -> ARecastNavMesh : FindPath
+ARecastNavMesh -> FPImplRecastNavMesh : FindPath
+FPImplRecastNavMesh -> dtNavMeshQuery : <b>findPath</b>
+FPImplRecastNavMesh -> FPImplRecastNavMesh : PostProcessPath
+FPImplRecastNavMesh --> AAIController : get navmesh path
+AAIController -> AAIController : <b>RequestMove(Path)</b>
+AAIController -> UPathFollowingComponent : RequestMove
+... 下一帧 ...
+-> UPathFollowingComponent : TickComponent
+UPathFollowingComponent -> UPathFollowingComponent : <b>FollowPathSegment()</b>
+note left
+这个函数里会根据下一个路径点和当前的位置计算出一个移动速度
+<b>有float运算</b>
+end note
+UPathFollowingComponent -> UCharacterMovementComponent : RequestDirectMove(Velocity)
+note left
+注意这里PathFollowingComponent驱动MovementComponent移动时
+回传的参数只有速度，角色每帧都会按这个速度移动一帧的距离
+endnote
+-> UCharacterMovementComponent : PerformMovement(Velocity)
+UCharacterMovementComponent -> UCharacterMovementComponent : PhysWalking
+UCharacterMovementComponent -> UCharacterMovementComponent : MoveAlongFloor
+note left
+这里计算当帧移动的距离，
+<b>有float计算</b>
+endnote
+UCharacterMovementComponent -> UCharacterMovementComponent : SafeMoveUpdatedComponent
+note left
+这里更新坐标
+endnote
+@enduml
+
+@startuml dtNavMeshQuery::queryPolygons
+start
+    : 计算搜索边界
+        float3 bMin = center - extents
+        float4 bMax = center + extents;
+    : 计算Tile边界
+        dtNavMesh::calcTileLoc(bMin)
+        dtNavMesh::calcTileLoc(bMax);
+stop
+@enduml
+
+@startuml FRecastNavMeshGenerator::AddGeneratedTiles
+start
+stop
+@enduml
+
+@startuml 寻路信息构建FRecastTileGenerator::GenerateTile
+|<b><font color=blue>::GenerateTile()</b>|
+start
+: <b><font color=blue>::GenerateCompressedLayers()</b>;
+|GenerateCompressedLayers|
+: 计算Tile的 Width & Height
+   Width/Height = tileSize + borderSize * 2;
+: 重新计算考虑borderSize之后的tile的BB的大小;
+group Solid高度场(SolidHF)的构建
+: 创建高度场SolidHF(rcHeightfield);
+note right
+    <b><font color=blue>::rcCreateHeightfield()</b>
+    分配内存跟初始化
+end note
+while(遍历RawGeometry)
+    : 处理Geometry;
+    : 标记Geometry三角面的可行走区域;
+    note right: <b><font color=blue>::rcMarkWalkableTriangles()</b>
+    : 根据Geometry的三角面信息构建高度场;
+    note right: <b><font color=blue>::rcRasterizeTriangles()</b>
+endwhile
+endgroup
+group 高度场SolidHF进一步处理
+: 裁剪高度场到导航信息生成区域内
+    <b><font color=blue>::ApplyVoxelFilter()</b>;
+note right
+    好奇这里为什么会需要做这个，
+    整个高度场的生成应该都是在导航区域内的，
+    不知道是不是漏看了什么？？
+end note
+: <b><font color=blue>::rcFilterLowHangingWalkableObstacles()</b>
+    <b>walkableClimb</b>的处理
+    同一列的Span,如果前一个span为walkable,且高度差 < <b>walkableClimb</b>,则该span也为walkable;
+: <b><font color=blue>::rcFilterLedgeSpans()</b>
+    <b>walkableClimb</b>的处理
+    检测Span到相邻Span(四方向的邻span)的高度差,
+    如果最小高度差 > <b>walkableClimb</b>, 该span标记为non-walkable;
+end group
+
+group Compact高度场(CompactHF)的构建
+:创建ConpactHF对象;
+note right: <b><font color=blue>::rcAllocCompactHeightfield()</b>
+:从SolidHF创建CompactHF;
+note right
+    <b><font color=blue>::rcBuildCompactHeightfield()</b>
+    注意CompactHF中的Span有邻Span联通性的信息;
+end note
+:<b><font color=blue>::rcErodeWalkableArea()</b>;
+: 距离场的构建;
+note right
+    距离场: span到边界的距离
+    <b><font color=blue>::rcBuildDistanceField()</b>
+end note
+end group
+|<b><font color=blue>::GenerateTile()</b>|
+group Generate Navigatios'pan
+: GenerateNavigationData();
+endgroup
+stop
+'
+' 一些疑问
+'  1. WalkableHieght vs WalkableClimb -- ::rcFilterLedgeSpans()
+'
+@enduml
+
+@startuml dtNavMesh::addTile
+start
+: 检查header确保数据生成信息的合法性;
+if (该位置上是否已经有tile数据) then(false)
+: 从m_nextFree创建新的tile;
+: 计算tile的hash;
+note right
+<b>hash 规则见函数</b>
+ ::computeTileHash()
+ 这里有两个magic number
+    <b>0x8da6b343</b> <b>0xd8163841</b>
+还不知道这个hash分布函数是怎么推导的
+end note
+: 根据计算得到的hash值，将tile放到lut(查找表) 对应桶中;
+note right
+这里需要注意<b>m_posLookup</b>每个桶中的链表都是头增长的
+end note
+: 填充tile一些属性;
+group link信息的构建
+#A020F0: 处理cluster;
+: 初始化dtLink链表;
+: 初始化dynamic Link信息;
+#C020AA: 为每个Poly构建dtLink信息;
+#C020AA: 为OffMesh Link构建dtLink信息;
+#C020AA: 构建链接到其他layer的dtLink;
+#C020AA: 构建链接到其他tile的dtLink;
+#C020AA: 处理offmesslink的Segment之间的连接;
+endgroup
+else
+    stop
+endif
+stop
+@endum
+
+'****************************************************
+' 寻路相关
+'****************************************************
+@startuml  dtNavMeshQuery::findPath
+start
+if (确认startPolyRef 跟 endPolyRef 的有效性) then(true)
+    : 初始化搜索参数
+    <b>m_nodePool</b> 节点缓存池
+    <b>m_openList</b> 考察队列, 存放所有待考察的节点;
+    while(循环遍历m_openList 中存在待考察的节点, 直到m_openList为空)
+        : 取出<b>m_openList</b>中顶节点作为本次考察节点 -> <b>bestNode</b>
+        并将node的flag 设为 <b>DT_NODE_CLOSED</b>;
+        note left
+        这里的算法并没有单独再使用一个
+        clostList队列存已经检查过的node
+        endnote
+        if (bestNode 是否到达寻路终点poly) then(true)
+            : 寻路结束;
+            break
+        else(false)
+            : 获取bestNode所对应navmesh上的信息: bestPoly, bestTile;
+            : 如果bestNode有父节点，则查询父节点信息;
+            while(<b>遍历bestNode所在Poly的link链表</b>)
+                : 得到当前正在遍历的link;
+                : 由link所指的poly得到neighbourPolyRef;
+                if (检查neighbourPolyRef是否合法) then (true)
+                    : 由neighbourPolyRef得到路径搜索节点 <b>neightbourNode</b>;
+                    : 获取bestPoly与neighbourPoly公共边的中点 -> neiPos;
+                    : 计算路径cost;
+                    if(如果neighbourPoly已经在待检查队列里，且本次计算cost更糟糕,
+                        或者 neightbourPoly  已经被考察过了，且本次计算cost更糟糕,
+                        或者 cost在一个无法接受的值
+                    ) then(true)
+                        : 放弃本次循环;
+                    endif
+                    : 更新<b>neightbourNode</b>, 并放入待考察队列m_openList中;
+                    note left
+                        1. 将bestNode 设为 neightbourNode的父节点, 方便之后回溯
+                        2. 记录本次计算的cost
+                        3. 更新node的flag => <b>DT_NODE_OPEN</b>
+                        4. 将公共边的中点neiPos设为neighbourNode的pos
+                    end note
+                    : 如果本次计算的cost小于已记录的<b>lastBestNodeCost</b>, 则更新<b>lastBestNode</b>;
+                    note left
+                        注意这里比较用的cost是基于当前节点位置到终点位置计算的cost,
+                        上面步骤比较的是从起始点出发到当前节点所需的cost
+                    end note
+                endif
+            endwhile
+        endif
+    endwhile
+    if (<b>lastBestNode</b>是寻路终点所在poly) then(true)
+        : 由<b>lastBestNode</b>向前遍历得到完整path和总cost;
+    else(false)
+        : 寻路失败;
+        end
+    endif
+endif
+stop
+@enduml
+
+'::rasterizeTri()参数说明
+' [in]  v0/v1/v2  : 三角形的顶点
+' [in]  area      : 三角形区域标记，可行走或不可行走
+' [out] hf        : 高度场数据结构
+' [in]  bmin/bmax : 高度场包围盒(世界坐标)
+' [in]  cs        : 体素大小(xz面上的尺寸)
+' [in]  ics/ich   : 用于速算 1/cs, 1/ch
+' [in]  flagMergeThr : 同`walkableClimb`, 最大爬行高度
+@startuml rasterizeTri
+|rasterizeTri|
+start
+: 缓存hf信息
+    w   ： hf 宽度(xz平面, 单位为cs, 表示沿X轴占的Cell的数量)
+    h   ： hf 高度(xz平面, 单位为cs, 表示沿Z轴占的Cell的数量, 这里叫长度可能更容易理解)
+    by  :  hf在世界空间下AABB的高度(Y轴);
+note right: 这里的<b>Cell</b>也就是单个<b>体素</b>
+: 转换三角形顶点到hf空间(XZ轴)
+    <b><font color=red>intVerts</b> 可以理解为，以bmin为原点，以cs(体素长度)为单位长度的坐标系中三角形的顶点;
+: 求hf空间中三角形在XZ轴上的AABB <b><font color=red><x0, y0> <x1, y1></b>
+    这个坐标的意义也可以理解是三角形在hf中占的Cell数量;
+: AB检测判断在XZ轴上三角形是否跟高度场hf相交;
+: 转换三角形顶点到hf空间(Y轴)
+    <b><triangle_smin, triangle_smax></b> 表示 以bmin为原点的三角形在Y轴的范围,<b>这里的单位并不是Cell的高度</b>;
+: 检测在Y轴上三角形是否跟高度场hf相交;
+: 一个特殊处理: x0 == x1 && y0 == y1;
+note right
+ 亦即三角形是一个点？
+ 没理解这里为什么会有这样一个处理，处理某种特殊情况?
+end note
+: 转换<b><triangle_smin, triangle_smax></b> 到体素空间, 
+    得到一个单位为ch的坐标<b><triangle_ismin, triangle_ismax></b>;
+: 剪裁三角形的AABB<b><font color=red>[<x0, y0><x1, y1></b>]到[<0, w-1>, <o, h-1>]范围中;
+note right: 这里最大范围为什么是w-1/h-1?
+if ( 如果三角面是平坦的 ： triangle_ismin == triangle_ismax ) then(true)
+    : 用一个数组来缓存三角形的边向量<b><font color=red>edges</b>
+        这个数组有6个元素，
+            * 前三个元素(index:0-2)存边向量，
+            * 后三个元素(index: 3-5)缓存边向量的倒数，用来做速算;
+    group 计算rcHeightfield.RowExt
+    note right
+        高度场中hf.RowExt中缓存了沿Z轴每个Tile区间在X轴占的Tile数
+    end note
+        while(遍历三角形的三个顶点)
+            note right
+                : <b><font color=ForestGreen>::addFlatSpanSample()</b>
+                    根据新的点更新hf在指定Z轴上的X跨度
+                        <b><font color=OrangeRed>* rcRowExt.MinCol,
+                        <b><font color=OrangeRed>* rcRowExt.MaxCol;
+            end note
+            : 根据当前三角形点更新<b>rcHeightfield.RowExt</b>;
+            : 根据当前三角形边更新<b>rcHeightfield.RowExt</b>;
+        endwhile
+    end group
+    while(从y0 到 y1 沿Z轴逐X-Cell进行处理)
+        : addSpan(x, y, ...);
+        note right
+            构建Span
+            Span的数据结构很简单:
+                smin/smax: Y轴上的AB
+                area: span是否可以行走的标记
+        end note
+        |addSpan|
+        :<b>span<font color=DarkRed>列</b>的Index
+        <b><font color=blue>idx = x + y*hf.width</b>;
+        if(如果span列上没有任何span) then("true")
+            : 把当前span放到<b>span列</b>上;
+            end
+        endif
+        :在<b>span列</b>上查找可以塞进当前span列的位置
+            1. 新的Span跟原始<b>Span列</b>中的span不相交，直接塞到<b>span列</b>头或者尾
+            2. 如果跟已有span相交，进行span合并
+                这里会有<b><font color=red>flagMergeThr 可攀爬高度</b>的处理, 用来重新标记某个area是否可行走;
+    endwhile
+else(处理不平坦三角面, 即三角面跨多个高度Cell)
+    note right: 待补充
+endif
+stop
+@enduml
+
+' 基于CompactHF计算距离场
+@startuml calculateDistanceField
+|calculateDistanceField|
+: 数组src存距离场结果信息, 初始化src元素为0xffff, 表示到边界距离无限远;
+start
+while(遍历CompactHF中Span)
+if (如果span不可行走或者span的4个邻接span有不可行走的) then(true)
+    : 对应src标记为 0, 表示该span到边界距离为0;
+endif
+endwhile
+group 第一遍计算
+while(遍历CompactHF中Span)
+    : 计算左邻span(dir: 0), 比较该span走左邻到边界的距离，更新src;
+    : 计算左下邻span(dir: 0-3)， 比较并更新src;
+    : 计算下邻span(dir: 3), 比较并更新src;
+    : 计算下右邻span(dir: 3-2)， 比较并更新src;
+endwhile
+end group
+group 第二遍计算
+while(遍历CompactHF中Span)
+    : 计算右邻span(dir: 2), 比较并更新src;
+    : 计算右上邻span(dir: 2-1)， 比较并更新src;
+    : 计算上邻span(dir: 1), 比较并更新src;
+    : 计算上左邻span(dir: 1-0)， 比较并更新src;
+endwhile
+end group
+: 遍历span计算到边界最远距离;
+stop
+@enduml

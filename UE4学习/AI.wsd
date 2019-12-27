@@ -1,0 +1,211 @@
+@startuml bt_class_ref
+package "行为树核心数据" #GreenYellow/LightGoldenRodYellow
+{
+    class UBehaviorTree #DeepPink
+    class UBTNode
+
+    class UBTAuxiliaryNode
+    class UBlackboardData #Pink
+    class UBTCompositeNode #LightSkyBlue
+    class UBTDecorator #LightSkyBlue
+
+    package "CompositeNodes" <<Rectangle>> #AliceBlue
+    {
+        class UBTComposite_Selector
+        class UBTComposite_Sequence
+        class UBTComposite_SimpleParallel
+
+        ' UBTCompositeNode <|-- UBTComposite_SimpleParallel
+    }
+
+    class UBTTaskNode #LightSkyBlue
+    {
+        EBTNodeResult ExecuteTask()
+        void TickTask()
+        EBTNodeResult AbortTask()
+        EBTNodeResult OnTaskFinished()
+    }
+
+    class UBTTask_BlueprintBase #MediumSpringGreen
+    {
+        void ReceiveExecute()
+        void ReceiveTick()
+        void ReceiveAbort()
+        -- For AI --
+        void ReceiveExecuteAI()
+        void ReceiveTickAI()
+        void ReceiveAbortAI()
+        -- Finish --
+        void FinishExecute()
+        void FinishAbort()
+    }
+
+    class UBTService #LightSkyBlue
+    {
+        +void TickNode()
+    }
+    ' note top: Serive 附着在任意Node上
+
+    class UBTService_BlueprintBase #MediumSpringGreen
+    {
+        void ReceiveActivation()
+        void ReceiveTick()
+        -- AI --
+        void ReceiveActivationAI()
+        void ReceiveTickAI()
+    }
+
+    class UBTDecorator_BlueprintBase #MediumSpringGreen
+    {
+        void ReceiveTick()
+        bool PerformConditionCheck();
+        -- AI --
+        void ReceiveTickAI()
+        bool PerformConditionCheckAI();
+    }
+
+    note top of UBTAuxiliaryNode: 辅助节点
+    note top of UBTCompositeNode: 逻辑节点
+    note top of UBTTaskNode: 行为节点
+
+
+    UBehaviorTree o-- UBlackboardData
+    UBehaviorTree o-- UBTNode
+    ' UBehaviorTree o.. UBTCompositeNode
+    ' UBehaviorTree o.. UBTDecorator
+
+
+    UBTNode <|-- UBTCompositeNode
+    UBTNode <|-- UBTAuxiliaryNode
+    UBTNode <|-- UBTTaskNode
+    UBTAuxiliaryNode <|-- UBTService
+    UBTAuxiliaryNode <|-- UBTDecorator
+    UBTTaskNode <|-- UBTTask_BlackboardBase
+    UBTTaskNode <|-- UBTTask_BlueprintBase
+    UBTCompositeNode <|-- UBTComposite_Selector
+    UBTCompositeNode <|-- UBTComposite_Sequence
+    UBTCompositeNode <|-- UBTComposite_SimpleParallel
+
+    ' FBTCompositeChild o.. UBTDecorator
+
+    UBTService <|-- UBTService_BlueprintBase
+    UBTDecorator <|-- UBTDecorator_BlueprintBase
+
+    class BTTask_MoveTo
+    class BTTask_PlaySound
+
+    UBTTask_BlackboardBase <|-- BTTask_MoveTo
+    UBTTask_BlackboardBase <|-- BTTask_PlaySound
+}
+@enduml
+
+@startuml
+package "BehaviorTree Components" #GreenYellow/LightGoldenRodYellow {
+    class UBehaviorTreeManager
+
+    class UBrainComponent
+    class UBlackboardComponent
+    class FAIMessage
+    class FAIMessageObserver
+    class FBTTreeStartInfo
+    class UBehaviorTreeComponent #DeepPink
+    {
+        .. 缓存有多个BTree ..
+        TArray<FBehaviorTreeInstance> InstanceStack
+        .. ActiveIndex标记当前正在跑的BTree ..
+        uint16 ActiveInstanceIdx
+        ----
+        -- Functions --
+        ----
+        void StartTree()
+        void PushInstance()
+        void StopTree()
+    }
+
+    class FBehaviorTreeInstance
+}
+UBrainComponent o.. FAIMessage
+UBrainComponent o.. FAIMessageObserver
+UBrainComponent o.. UBlackboardComponent
+
+' UBehaviorTreeComponent --> UBrainComponent
+UBrainComponent <|-- UBehaviorTreeComponent
+' UBehaviorTreeComponent o.. UBehaviorTree
+UBehaviorTreeComponent o.. FBehaviorTreeInstance
+@enduml
+
+
+@startuml BehaviorTree_Load
+start
+if (检查是否有该BehaviorTree的缓存) then(true)
+    :有的话直接返回缓存;
+    end
+else(false)
+    : 取树的根节点;
+    group <b><font color=Blue>InitializeNodeHelper</font></b>
+        #00A0A0: Node->InitializeFromAsset();
+        while(遍历Node中的<b><font color=red>Service</font></b>, 进行初始化)
+        #00A0A0: Service->InitializeFromAsset();
+        endwhile
+
+        while(遍历Node中的<b><font color=red>Child信息</font></b>, 进行初始化)
+            while(遍历Child信息中的<b><font color=red>Decorator</font></b>, 进行初始化)
+                #00A0A0: Decorator->InitializeFromAsset(();
+                #00A0A0: Decorator->InitializeParentLink(();
+            endwhile
+            if (判断ChildNode的节点类型) then(如果是流程控制节点(Selector, Sequence))
+                #00A0A0: 执行<b><font color=red>控制节点(Selector, Sequence)</font></b>的初始化
+                    <b><font color=Blue>InitializeNodeHelper</font></b>
+                    <b>这里的调用会引发本过程的递归执行</b>;
+            else(如果是Task)
+                : 初始化Task的Services信息;
+                note left
+                    这里Service的初始化会跟
+                    下面childNode初始化中有逻辑重复
+                    是不是写的有问题?
+                end note
+                #00A0A0: 执行<b><font color=red>Task节点</font></b>的初始化
+                    <b><font color=Blue>InitializeNodeHelper</font></b>
+                    <b>这里的调用会引发本过程的递归执行</b>;
+            endif
+        endwhile
+        : CompositeOb->InitializeComposite();
+    end group
+    : 节点列表的内存整理(排序);
+    #00A0A0: Node->InitializeNode();
+    note left
+        这里的初始化只做简单的信息记录,包括一下信息
+            1. ParentNode: Node的父节点
+            2. ExecutionIndex: 对应的执行序列Index
+            3. TreeDepth: 在树中的深度
+            4. MemoryOffset: 节点内存偏移;
+     end note
+    : 将新的BTree加入缓存;
+endif
+
+stop
+@enduml
+
+@startuml behaviortree_exe_flow
+actor User
+User -> AIController : RunBehaviorTree
+AIController -> UBehaviorTreeComponent : StartTree
+UBehaviorTreeComponent -> UBehaviorTreeComponent : PushInstance(<b>BehaviorTree</b>)
+UBehaviorTreeComponent -> UBehaviorTreeComponent : LoadTree(<b>BehaviorTree</b>)
+UBehaviorTreeComponent -> UBehaviorTreeComponent : RequestExecution
+UBehaviorTreeComponent -> UBehaviorTreeComponent : ScheduleExecutionUpdate
+... 下一帧 ...
+-> UBehaviorTreeComponent: TickComponent
+UBehaviorTreeComponent -> UBehaviorTreeComponent : ProcessExecutionRequest
+UBehaviorTreeComponent -> UBTCompositeNode : FindChildToExecute 
+note right : 获取逻辑节点下一个可执行的子节点
+UBTCompositeNode -> UBTCompositeNode : GetNextChildHandler 
+note right : <b>Selector/Sequence 节点选取策略写在这里</b>
+UBTCompositeNode -> UBTCompositeNode : DoDecoratorsAllowExecution
+UBTCompositeNode -> UBTDecorator : WrappedCanExecute 
+note right : 判断节点是否可以执行
+UBehaviorTreeComponent -> UBehaviorTreeComponent : ExecuteTask
+UBehaviorTreeComponent -> UBTService : WrappedOnBecomeRelevant
+UBehaviorTreeComponent -> UBTTaskNode : WrappedExecuteTask
+note right : 执行Task节点
+@enduml
