@@ -465,32 +465,20 @@ start
     h   ： hf 高度(xz平面, 单位为cs, 表示沿Z轴占的Cell的数量, 这里叫长度可能更容易理解)
     by  :  hf在世界空间下AABB的高度(Y轴);
 note right: 这里的<b>Cell</b>也就是单个<b>体素</b>
-: 转换三角形顶点到hf空间(XZ轴)
-    <b><font color=red>intVerts</b> 可以理解为，以bmin为原点，以cs(体素长度)为单位长度的坐标系中三角形的顶点;
-: 求hf空间中三角形在XZ轴上的AABB <b><font color=red><x0, y0> <x1, y1></b>
-    这个坐标的意义也可以理解是三角形在hf中占的Cell数量;
-: AB检测判断在XZ轴上三角形是否跟高度场hf相交;
-: 转换三角形顶点到hf空间(Y轴)
-    <b><triangle_smin, triangle_smax></b> 表示 以bmin为原点的三角形在Y轴的范围,<b>这里的单位并不是Cell的高度</b>;
-: 检测在Y轴上三角形是否跟高度场hf相交;
-: 一个特殊处理: x0 == x1 && y0 == y1;
-note right
- 亦即三角形是一个点？
- 没理解这里为什么会有这样一个处理，处理某种特殊情况?
-end note
-: 转换<b><triangle_smin, triangle_smax></b> 到体素空间, 
-    得到一个单位为ch的坐标<b><triangle_ismin, triangle_ismax></b>;
+: 世界坐标与体素坐标的处理
+     <b><font color=red>intverts[3][2]</b> : 三角形顶点(v0, v1, v2) 在X-Z平面上的体素坐标
+     <b><font color=red>(x0, y0), (x1, y1)</b> : 三角形 在高度场体素坐标系下的AABB
+     <b><font color=red>(triangle_smin, triangle_smax)</b> : 三角形在高度场世界坐标系下的Y轴的范围
+     <b><font color=red>(triangle_ismin, triangle_ismax)</b> : 三角形在高度场体素坐标系下的;
+: 一些AB检测判断三角形是否与高度场相交;
 : 剪裁三角形的AABB<b><font color=red>[<x0, y0><x1, y1></b>]到[<0, w-1>, <o, h-1>]范围中;
-note right: 这里最大范围为什么是w-1/h-1?
-if ( 如果三角面是平坦的 ： triangle_ismin == triangle_ismax ) then(true)
-    : 用一个数组来缓存三角形的边向量<b><font color=red>edges</b>
-        这个数组有6个元素，
-            * 前三个元素(index:0-2)存边向量，
-            * 后三个元素(index: 3-5)缓存边向量的倒数，用来做速算;
+: 用一个数组来缓存三角形的边向量<b><font color=red>edges</b>
+    这个数组有6个元素，
+        * 前三个元素(index:0-2)存边向量，
+        * 后三个元素(index: 3-5)缓存边向量的倒数，用来做速算;
+note right: 注意这里的范围是到w-1和 h-1
+if ( 三角面是否平坦 ： triangle_ismin == triangle_ismax? ) then(平坦三角面处理)
     group 计算rcHeightfield.RowExt
-    note right
-        高度场中hf.RowExt中缓存了沿Z轴每个Tile区间在X轴占的Tile数
-    end note
         while(遍历三角形的三个顶点)
             note right
                 : <b><font color=ForestGreen>::addFlatSpanSample()</b>
@@ -498,12 +486,26 @@ if ( 如果三角面是平坦的 ： triangle_ismin == triangle_ismax ) then(tru
                         <b><font color=OrangeRed>* rcRowExt.MinCol,
                         <b><font color=OrangeRed>* rcRowExt.MaxCol;
             end note
-            : 根据当前三角形点更新<b>rcHeightfield.RowExt</b>;
-            : 根据当前三角形边更新<b>rcHeightfield.RowExt</b>;
+            : 记录三角边信息，存入<b><font color=red>edges</b>;
+            : 更新顶点信息进<b><font color=blue>RowExt</b>;
+            if(三角边不是平行与Z轴的) then(true)
+                : 对于三角边覆盖的每个Z-Row, 记录改边信息存入<b><font color=blue>EdgeHits</b>;
+            endif
+            : 沿X轴处理三角边，将边横跨的X的范围更新进<b><font color=blue>RowExt</b>;
+            note right
+                : 这里有一个函数需要注意<b><font color = red>intersectX</b>
+                该函数的作用是对于给定X坐标，求对应该边上的点的坐标
+                由于<b><font color=red>edges</b>同时存储了边向量和其倒数信息，有一些很trick的写法
+                    如果 ed = edges[i] 表示某个边向量，那么ed[9] 则是其倒数信息
+            end note
+        endwhile
+        while(遍历三角面覆盖的Z-Row -> (y0 - y1))
+            : 处理跨过Z-Row的两个斜边信息，更新进<b><font color=blue>RowExt</b>;
         endwhile
     end group
-    while(从y0 到 y1 沿Z轴逐X-Cell进行处理)
-        : addSpan(x, y, ...);
+    while(遍历三角面覆盖的Z-Row -> (y0 - y1)))
+        while(遍历Z-Row上覆盖的X-Cell)
+        : 将每个Cell处理成Span信息<b><font color=blue>addSpan(x, y, ...)</b>;
         note right
             构建Span
             Span的数据结构很简单:
@@ -521,9 +523,14 @@ if ( 如果三角面是平坦的 ： triangle_ismin == triangle_ismax ) then(tru
             1. 新的Span跟原始<b>Span列</b>中的span不相交，直接塞到<b>span列</b>头或者尾
             2. 如果跟已有span相交，进行span合并
                 这里会有<b><font color=red>flagMergeThr 可攀爬高度</b>的处理, 用来重新标记某个area是否可行走;
+        |rasterizeTri|
+        endwhile
     endwhile
 else(处理不平坦三角面, 即三角面跨多个高度Cell)
-    note right: 待补充
+    : 处理非平坦三角面情况基本相似， 几个差别
+        <b><font color=red>::addSpanSample() vs ::addFlatSpanSample()</b>
+        用<b><font color=red>sint</b>来标记高度信息
+    ;
 endif
 stop
 @enduml
@@ -555,5 +562,121 @@ while(遍历CompactHF中Span)
 endwhile
 end group
 : 遍历span计算到边界最远距离;
+stop
+@enduml
+
+'区域划分'
+@startuml rcBuildHeightfieldLayers
+|rcBuildHeightfieldLayers|
+start
+: 申请缓存Stack, 用于之后的运算中缓存参与计算的Span信息; 
+: 初始化区域Id <b><font color=blue>RegionId</b>;
+: 初始化监测深度 <b><font color=blue>Level</b>;
+: 标记Border区域;
+while(Level > 0)
+: 基于当前Level进行区域监测<b><font color=green>::ExpandRegions()</b>;
+note right
+ 这个过程只会用将新的被水浸染的Span扩充进已有的Region中，不会产生新的Region
+end note
+    |ExpandRegions|
+    : 收集在深度在当前Level以下的所有Span，放到缓存栈Stack中;
+    while(Stack.Num() > 0)
+        : 将Src栈中的值拷贝到Dst栈中;
+        while(遍历Stack中的元素)
+        note right
+            这个循环会跑多次，循环退出结果
+            1. 所有Span都Failed，这里的Failed是一种标志，
+            	Span区域计算成功会在之后的循环里识别为Failed，跳过计算
+            	Span区域计算会在当此循环里标记为Failed，在后续循环重新计算
+            2. 超过最大循环次数
+            算法过程主要是通过邻接Span信息来刷新当前Span的区域,达到水位浸染的效果
+            循环的计算结果会记录在DstDist&DstReg中，SrcDist&SrcReg作为循环的输入参与计算过程
+            所以每次循环后都要将Dst刷新Src
+        end note
+        : 如果Stakc元素解析完成，跳过，Fieled计数加一;
+        : 从Stack解析Span信息;
+        : 遍历Span的4方向邻Span，如果邻Span已经有非边界的所属区域，那么将当前Span划分到同一区域;
+        : 如果没有分配正确的RegionId, Failed计数加一;
+        endwhile
+        : 交换Src栈和Dst栈中值;
+        : 检测是否超过最大循环计数;
+    endwhile
+    |rcBuildHeightfieldLayers|
+    while(遍历所有Span)
+        if (Span深度在Level以下，并且没有分配到正确的RegionId) then
+            : 区域扩展<b><font color=green>::FloodRegion()</b>;
+            |FloodRegion|
+            : Span划入新的区域;
+            : Span信息推入Stack栈;
+            group 以Span为中心向外扩展标记区域
+            while(Stack.Num() > 0)
+                : 取Stack栈顶Span信息;
+                : 遍历Span 8方向邻Span信息，获取邻Span的区域信息;
+                if (8方向邻Span是否都没有被划入区域) then(否, 邻Span有正确区域)
+                    : 循环跳过，不进行邻Span的区域扩展;
+                else
+                    while(遍历Span的4方向邻边)
+                        if(是否邻Span深度在Level以下，且Area一致) then(是)
+                            : 将邻Span也划入新的区域;
+                        endif
+                    endwhile
+                endif
+            endwhile
+            end group
+            |rcBuildHeightfieldLayers|
+            : 扩展RegionId;
+        endif
+    endwhile
+endwhile
+stop
+@enduml
+
+@startuml dtBuildTileCacheContours
+|dtBuildTileCacheContours|
+start
+group 获取Cell Connection信息
+while(遍历Cell)
+: 遍历Cell的4方向相邻Cell的联通性，计算Cell 4方向不连通的边界信息, 放入<b><font color=red>数组flags</b>中;
+note right: 这里由联通边界计算不连通边界信息是个异或操作
+endwhile
+end group
+group 开始Contour计算
+: 初始化一些临时变量，<b><font color=red>dtTempContour temp</b>这个变量存储计算过程中的Contour信息;
+while(沿X-Y遍历Tile上的每个Cell)
+    : 如果Cell不存在不连通的边，跳过;
+    : 如果Cell不在正确的Region上，跳过;
+    : 当Cell某个边有不连通的话，那么Cell一定在区域边界上，那么沿着这个边开始构建区域的Contour
+    <b><font color=green>::walkContour()</b>;
+    |walkContour|
+    : 找到第一个不连通的方向Dir;
+    while(循环不超过最大循环次数: w * h * 2)
+        : 获取当前搜寻方向Dir的邻Cell;
+        if (比较邻Cell与当前Cell的RegionId) then(RegionId不一致，则找到Contour边)
+            : 用邻Cell信息更新Contour顶点列表
+                <b><font color=green>::appendVertex()</b>;
+            note right
+            轮廓点规则：
+                左边有邻居region(dir == 0)，上边为轮廓点；
+                上边有邻居region(dir == 1)，右上为轮廓点；
+                右边有邻居region(dir == 2)，右边有轮廓点；
+                下边有邻居region(dir == 3)，span自身坐标为轮廓点
+            end note
+            : 顺时针旋转搜寻方向Dir;
+        else(RegionId一致)
+            : 将邻Cell当作搜索的基准Cell;
+            : 逆时针旋转搜寻方向Dir;
+        endif
+    endwhile
+    : 检测Contour首尾顶点是否重叠, 去除重叠点;
+    |dtBuildTileCacheContours|
+    : 现在得到的Contour点中包含每个区域交界的边, 简化Contour信息
+    <b><font color=green>::simplifyContour()</b>;
+    |simplifyContour|
+    : 遍历Contour中所有的点，如果当前点与下一个点不在同一个RegionId, 则把该点加入<b><font color=blue>数组poly</b>中;
+    while()
+    |dtBuildTileCacheContours|
+    : 保存临时变量temp的Contour信息到Layer中;
+endwhile
+end group
 stop
 @enduml
