@@ -113,6 +113,7 @@ UE4导航与寻路网格
     * `Chunky Monotone` 介于上两种之间
 7. `Max Simplification Error`
     轮廓生成时会用到，用于简化轮廓
+
 >#### <font color=#0099ff>dtNavMeshParams的填充</font>
 <ul>
 
@@ -203,6 +204,12 @@ UE4导航与寻路网格
 > | m_posLookup | <b>`dtMeshTile*`</b> | tile查找表, 每个元素都是一个桶，里面存放tile的链表，这样可以在理论上达到存放任意数目的Tile
 
 #### NavMesh构建过程
+* 导航网格数据
+    ![avatar](Navigation/navigationdata.png)
+    上图中
+    黄线是Tile的边界，白色的坐标是Tile的坐标
+    黑线是Poly的边界线，白线是三角形的边界
+    绿色是可行走区域，空洞地方是阻挡物
 * 导航网格数据构建调用  
     * 导航网格数据构建工具类
         > `RecastNavMeshGenerator` & `RecastTileGeneratorTask`
@@ -355,10 +362,27 @@ UE4导航与寻路网格
         基本过程涉及两个步骤, 首先将轮廓三角化，切割成多个三角形, 再将三角形进行合并，形成凸多边形
 
         * 三角化算法
-            * 叉乘判断点与线的位置关系
-            * 
+            1. 先找出所有可切割三角形的`有效分割`  
+                所谓`有效分割`定义如下  
+                对于多边形上的三个顶点，(i-1, i, i+1), 如果线段(i-1, i+1)在完全在多边形内，则`i`点存在`有效分割`(i-1, i+1)
 
-    1. asda
+                ![avatar](Navigation/triangulate_1.png)
+            2. 由于对一个顶点可能存在多种`有效分割`, 遍历所有的分割点,找出最短的`有效分割`线和对应顶点`i`,
+            3. 用找出来的最短的分割线进行切割三角形
+                * 从多边形中移除顶点i 
+                * 对在`i`点进行完三角切割后的产生的三角边两个顶点(i-1, i+1)重新进行分割判定
+                ![avatar](Navigation/triangulate_2.png)
+            4. 重复上面的切割步骤直到多边形只剩下三个顶点则分割完成
+
+        * 凸多边形合并
+            以三角化得到的三角形作为最初的凸多边形进行合并
+            合并规则:
+                1. 多边形存在公共边
+                2. 合并之后依然是凸多边形
+                3. 不超过设定的多边形最多顶点数`MAX_VERTS_PER_POLY`(当前限制数为6)
+            合并过程是一个循环遍历，遍历找满足上述条件的可合并的多边形，直到找不到可合并的则退出循环
+    7. `Cluster`(待补充)
+
  * 生成过程相关的时序图
        * ![avatar](Navigation/generated_flow.png)
 * `FRecastTileGenerator::AddGeneratedTiles` & `FRecastTileGenerator::addTile`

@@ -1,0 +1,76 @@
+@startuml
+
+class IMovieScenePlayer #MediumSpringGreen
+
+class UMovieSceneSequencePlayer #MediumSpringGreen
+
+class ULevelSequencePlayer #MediumSpringGreen
+
+ISequencer --|> IMovieScenePlayer 
+UMovieSceneSequencePlayer --|> IMovieScenePlayer  
+ULevelSequencePlayer --|> UMovieSceneSequencePlayer  
+
+IMovieScenePlayer o.. FMovieSceneEvaluationState
+IMovieScenePlayer o.. FMovieScenePreAnimatedState
+
+UMovieSceneSequencePlayer o.. FMovieSceneRootEvaluationTemplateInstance
+@enduml
+
+@startuml
+package "Track执行相关" #GreenYellow/LightGoldenRodYellow {
+
+    class FMovieSceneContext
+    class FMovieSceneEvalTemplate
+    class FMovieSceneEvaluationTrack
+    class FPersistentEvaluationData
+    class FMovieSceneExecutionTokens
+    class FMovieSceneEvaluationOperand
+}
+
+@enduml
+
+@startuml 编辑器开启过程
+-> FLevelSequenceActions : OpenAssetEditor
+FLevelSequenceActions -> FLevelSequenceEditorToolkit : Initialize
+activate FLevelSequenceEditorToolkit
+    group 创建SequenceWidget
+        FLevelSequenceEditorToolkit -> FSequencerModule : CreateSequencer
+        FSequencerModule -> FSequencer : InitSequencer
+        note right: sNew(<b><font color=red>SequenceWidget</b>)
+    end group
+
+    group 设置SequenceEdMode
+        FLevelSequenceEditorToolkit -> FLevelEditorSequencerIntegration : AddSequencer
+        FLevelEditorSequencerIntegration -> FLevelEditorSequencerIntegration : ActivateSequencerEditorMode
+        FLevelEditorSequencerIntegration -> FSequenceEdMode : Activate FSequenceEdMode
+        note right: GLevelEditorModeTools().ActivateMode( FSequencerEdMode::EM_SequencerMode )
+    end group
+
+    group 将SequenceWidget绑定到当前Window的Tab下显示
+        FLevelSequenceEditorToolkit -> FLevelEditorModule : AttachSequencer
+        FLevelEditorModule -> SLevelEditor: AttachSequencer
+        SLevelEditor -> SDockTab : SetContent(<b><font color=red>SequenceWidget</b>)
+    end group
+deactivate FLevelSequenceEditorToolkit
+@enduml
+
+@startuml Sequence 计算一帧
+-> UMovieSceneSequencePlayer : update
+activate UMovieSceneSequencePlayer
+UMovieSceneSequencePlayer -> UMovieSceneSequencePlayer : UpdateTimeCursorPosition
+UMovieSceneSequencePlayer -> UMovieSceneSequencePlayer : UpdateMovieSceneInstance
+UMovieSceneSequencePlayer -> FMovieSceneRootEvaluationTemplateInstance : <b><font color=blue>Evaluate</b>
+activate FMovieSceneRootEvaluationTemplateInstance
+    FMovieSceneRootEvaluationTemplateInstance -> FMovieSceneRootEvaluationTemplateInstance : <b><font color=blue>SetupFrame</b> 
+    note right: Create <b><font color=red>FMovieSceneEvaluationGroup</b>
+    FMovieSceneRootEvaluationTemplateInstance -> FMovieSceneRootEvaluationTemplateInstance : <b><font color=blue>ConstructEvaluationPtrCacheForFrame</b> 
+    note right: Create <b><font color=red>FMovieSceneEvaluationPtrCache</b>
+    FMovieSceneRootEvaluationTemplateInstance -> FMovieSceneRootEvaluationTemplateInstance : <b><font color=blue>EvaluateGroup</b>
+    FMovieSceneRootEvaluationTemplateInstance -> FMovieSceneRootEvaluationTemplateInstance : Apply <b><font color=red>ExecutionTokens</b>
+
+deactivate FMovieSceneRootEvaluationTemplateInstance
+
+UMovieSceneSequencePlayer -> UMovieSceneSequencePlayer : ApplyLatentActions
+
+deactivate UMovieSceneSequencePlayer
+@enduml
