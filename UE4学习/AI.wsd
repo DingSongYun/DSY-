@@ -209,3 +209,39 @@ UBehaviorTreeComponent -> UBTService : WrappedOnBecomeRelevant
 UBehaviorTreeComponent -> UBTTaskNode : WrappedExecuteTask
 note right : 执行Task节点
 @enduml
+
+@startuml FMovieSceneEvaluationTemplate的数据填充
+|<b><font color=blue>::Generate</b>|
+start
+: 处理CameraTrack;
+while(遍历MasterTracks)
+    : 处理MasterTrack;
+endwhile
+while(遍历Object Bindings)
+    while(遍历单个ObjectBinding 的 所有Tracks)
+        : 处理ObjectBinding的Track;
+        note right: <b><font color=blue> ProcessTrack </b>
+        |<b><font color=blue>::ProcessTrack</b>|
+        if (Track是否是SubTrack) then('是SubTrack')
+            : <b><font color=blue>::ProcessSubTrack</b>;
+        else
+        group 为Track生成<b><font color=red>FMovieSceneEvaluationTrack</b>
+            |<b><font color=blue>Track::Compile</b>|
+                while(遍历Trakc中所有Sections)
+                    : 为Section生成 <b><font color=red>FMovieSceneEvalTemplate</b>;
+                    : 设置 <b><font color=red>FMovieSceneEvalTemplate</b> 一些属性(CompletionMode, SourceSection);
+                    : 将 <b><font color=red>FMovieSceneEvalTemplate</b> 添加到 <b><font color=red>FMovieSceneEvaluationTrack</b> 中;
+                    : 生成<b><font color=red>FSectionEvaluationData</b> 并添加到 <b><font color=red>FMovieSceneEvaluationTrack</b> 中;
+                    : 根据Section区间的开闭性处理<b><i>Pre-Roll Range</b> 和 <b><i>Post-Roll Range</b>;
+                endwhile
+        end group
+            |<b><font color=blue>::ProcessTrack</b>|
+            : 将 <b><font color=red>FMovieSceneEvaluationTrack</b> 添加到Template中;
+            : <b><font color=blue>FMovieSceneEvaluationTemplate::DefineTrackStructure</b>;
+        endif
+        |<b><font color=blue>::Generate</b>|
+    endwhile
+endwhile
+: <b><font color=blue>FMovieSceneEvaluationTemplate::RemoveStaleData</b>;
+stop
+@enduml

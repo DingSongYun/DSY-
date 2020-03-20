@@ -200,3 +200,93 @@ Bob -> Alice: 状态返回
 Alice -> Alice: 给自己发消息
  
 @enduml
+
+@startuml
+class EventBus
+{
+ - UEventBus::Attach			向EventBus中注册事件对象
+ - UEventBus::RegisterEvent		监听指定对象中的事件
+ - UEventBus::NotifyEvent		事件广播
+ - UEventBus::TriggerEvent		事件触发
+}
+note right: 事件的管理器，全局的
+
+class EventGraph
+note top
+ 为不同对象创建不同的EventGraph资源实现事件的定制
+ 基本上运行时会存在三类EventGraph
+    1. 全局的EventGraph, 一个， 响应一些全局事件
+    2. 地图的EventGraph, 一个, 不同地图定制不同的，响应地图事件(MissionStart, MisionComplete, etc..)
+    3. 特定对象的EventGraph, 多个，Graph集，不同对象有自己的EventGraph定义
+end note
+
+EventBus o.. EventScheduler
+EventScheduler o.. EventGraph
+EventScheduler o.. Object
+note right: 逻辑对象，事件的拥有者
+EventGraph .. 事件定义
+EventGraph .. 事件响应器
+事件定义 <-> 事件响应器
+note bottom: 每个响应器对应一个或多个事件，可以是Task 或者 Delegate
+@enduml
+
+
+@startuml
+class FRoleAttrData
+{
+    + float Value       属性值
+    + bool bPercent     是否是百分比
+    + 其他属性数据
+}
+
+class FRoleAttrCollection
+{
+    TMap<ERoleAttr, FRoleAttrData> AttrDatas    属性集
+}
+
+package 角色身上的属性
+{
+    class URoleAttrRootContext
+    {
+        --属性操作接口--
+        float GetAttribute(ERoleAttr AttrType, bool bEvaluate = true)
+        void SetAttribute(ERoleAttr AttrType, float Value);
+    }
+    note left
+         Character的成员变量
+         所有属性的访问，同步 操作统一到这里
+    end note
+
+    class URoleAttrRootEvaluator
+    {
+        void LinkToAttrChain(URoleAttrEvaluator* AttrEval)
+        void Evaluate(TMap<ERoleAttr, float>& OutAttrValues)
+    }
+    note bottom 
+        属性计算
+        这里链接附属属性的Evaluator进行属性的链式计算
+    end note
+}
+
+package 其他的附属属性(装备buff等)
+{
+    class URoleAttrContext
+    {
+
+    }
+    note top: 属性访问，操作, 同步接口
+
+    class URoleAttrEvaluator
+}
+
+FRoleAttrCollection o-- FRoleAttrData
+
+URoleAttrRootContext o-- FRoleAttrCollection
+URoleAttrRootContext o-- URoleAttrRootEvaluator
+
+URoleAttrContext o-- FRoleAttrCollection
+URoleAttrContext o-- URoleAttrEvaluator
+
+URoleAttrRootEvaluator o.. URoleAttrEvaluator
+
+@enduml

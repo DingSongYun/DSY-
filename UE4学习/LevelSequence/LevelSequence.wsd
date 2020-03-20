@@ -1,5 +1,112 @@
 @startuml
 
+package Sequence
+{
+class UMovieSceneSignedObject
+
+class UMovieSceneSequence
+{
+	+ UMovieScene* GetMovieScene() const
+}
+
+class ULevelSequence #MediumSpringGreen
+{
+	FLevelSequenceBindingReferences BindingReferences;
+	----
+	+ void BindPossessableObject(const FGuid& ObjectId, UObject& PossessedObject, UObject* Context);
+
+}
+
+class UMovieScene
+{
+	- TArray<FMovieSceneBinding> <b><font color=blue>ObjectBindings</b>
+	- TArray<UMovieSceneTrack*> <b><font color=blue>MasterTracks</b>
+	- UMovieSceneTrack* <b><font color=blue>CameraCutTrack</b>
+
+}
+
+class FLevelSequenceObjectReferenceMap #GreenYellow
+{
+	+ TMap<FGuid, FLevelSequenceLegacyObjectReference> <b><font color=blue>Map</b>
+	----
+	UObject* ResolveBinding(const FGuid& ObjectId, UObject* InContext)
+}
+
+class FMovieSceneBinding #GreenYellow
+{
+	- FGuid <b><font color=blue>ObjectGuid</b>
+	- TArray<UMovieSceneTrack*> <b><font color=blue>Tracks</b>
+}
+
+class UMovieSceneTrack #Pink
+{
+	-- Sections Data --
+	+ void AddSection(UMovieSceneSection& Section)
+	+ UMovieSceneSection* CreateNewSection() 
+	+ RemoveSection(UMovieSceneSection& Section)
+
+	-- For Evaluate --
+	+ EMovieSceneCompileResult Compile(FMovieSceneEvaluationTrack& Track, ...)
+	+ EMovieSceneCompileResult CustomCompile(FMovieSceneEvaluationTrack& Track, ...)
+	+ void PostCompile(FMovieSceneEvaluationTrack& Track, ...) 
+	+ void GenerateTemplate(const FMovieSceneTrackCompilerArgs& Args)
+	+ FMovieSceneEvalTemplatePtr CreateTemplateForSection(const UMovieSceneSection& InSection)
+
+}
+
+class UMovieSceneSection #Pink
+{
+	+ FMovieSceneSectionEvalOptions <b><font color=blue>EvalOptions</b>
+	+ TSharedPtr<FMovieSceneChannelProxy> <b><font color=blue>ChannelProxy</b>
+	+ FOptionalMovieSceneBlendType <b><font color=blue>BlendType</b>
+	----
+	+ FMovieSceneEvalTemplatePtr GenerateTemplate() const
+}
+
+class FMovieSceneChannel #Pink
+{
+	+ void GetKeyTime(const FKeyHandle InHandle, FFrameNumber& OutKeyTime)
+	+ void SetKeyTime(const FKeyHandle InHandle, const FFrameNumber InKeyTime)
+	+ void GetKeys(const TRange<FFrameNumber>& WithinRange, ...)
+
+}
+
+class FMovieSceneEvalTemplate #Pink
+{
+	+ void <b><font color=red>Evaluate</b>(...) const
+	+ void <b><font color=red>EvaluateSwept</b>(...) const
+
+}
+
+
+UMovieSceneSignedObject <|-- UMovieSceneSequence
+UMovieSceneSignedObject <|-- UMovieScene
+UMovieSceneSignedObject <|-- UMovieSceneTrack
+UMovieSceneSignedObject <|-- UMovieSceneSection
+
+UMovieSceneSequence <|-- ULevelSequence
+
+UMovieSceneSequence o.. UMovieScene
+ULevelSequence o-- UMovieScene
+
+ULevelSequence o-- FLevelSequenceObjectReferenceMap
+
+UMovieScene o-- FMovieSceneBinding
+UMovieScene o-- UMovieSceneTrack
+
+
+UMovieSceneTrack o-- UMovieSceneSection
+UMovieSceneSection o.. FMovieSceneChannel
+UMovieSceneSection o.. FMovieSceneEvalTemplate
+
+FMovieSceneEvalTemplate --|> FMovieSceneEvalTemplateBase
+
+FLevelSequenceObjectReferenceMap <..> FMovieSceneBinding 
+}
+
+package Player
+{
+
 class IMovieScenePlayer #MediumSpringGreen
 
 class UMovieSceneSequencePlayer #MediumSpringGreen
@@ -7,13 +114,76 @@ class UMovieSceneSequencePlayer #MediumSpringGreen
 class ULevelSequencePlayer #MediumSpringGreen
 
 ISequencer --|> IMovieScenePlayer 
+FSequencer --|> ISequencer
 UMovieSceneSequencePlayer --|> IMovieScenePlayer  
 ULevelSequencePlayer --|> UMovieSceneSequencePlayer  
 
-IMovieScenePlayer o.. FMovieSceneEvaluationState
-IMovieScenePlayer o.. FMovieScenePreAnimatedState
+IMovieScenePlayer o-- FMovieSceneEvaluationState
+IMovieScenePlayer o-- FMovieScenePreAnimatedState
 
-UMovieSceneSequencePlayer o.. FMovieSceneRootEvaluationTemplateInstance
+class FMovieSceneRootEvaluationTemplateInstance
+{
+   	- TSharedPtr<IMovieSceneSequenceTemplateStore> <b><font color=blue>TemplateStore</b>
+}
+
+class FMovieSceneEvaluationTemplate
+{
+    - TMap<FMovieSceneTrackIdentifier, FMovieSceneEvaluationTrack> <b><font color=blue>Tracks</b>
+	+ FMovieSceneEvaluationField <b><font color=blue>EvaluationField</b>
+    + FMovieSceneSequenceHierarchy <b><font color=blue>Hierarchy</b>
+
+}
+
+class FMovieSceneEvaluationTrack
+{
+	- const UMovieSceneTrack* <b><font color=blue>SourceTrack</b>
+	- TArray<FMovieSceneEvalTemplatePtr> <b><font color=blue>ChildTemplates</b>
+	- FMovieSceneTrackImplementationPtr <b><font color=blue>TrackTemplate</b>
+}
+
+class FMovieSceneEvaluationField
+{
+	- TArray<FMovieSceneEvaluationGroup> <b><font color=blue>Groups</b>
+	- TArray<FMovieSceneEvaluationMetaData> <b><font color=blue>MetaData</b>
+}
+
+class FMovieSceneEvalTemplate #Pink
+
+class FMovieSceneEvaluationGroup
+{
+
+}
+
+class FMovieSceneEvaluationMetaData
+{
+    - TArray<FMovieSceneOrderedEvaluationKey> ActiveEntities;
+}
+
+class FMovieSceneEvaluationKey
+{
+	+ FMovieSceneSequenceID SequenceID
+	+ FMovieSceneTrackIdentifier TrackIdentifier
+	+ uint32 SectionIndex
+}
+note bottom: 可以索引到Sequence的指定Track or Section
+
+UMovieSceneSequencePlayer o-- FMovieSceneRootEvaluationTemplateInstance
+FSequencer o-- FMovieSceneRootEvaluationTemplateInstance
+
+FMovieSceneRootEvaluationTemplateInstance o.. FMovieSceneEvaluationTemplate
+FMovieSceneEvaluationTemplate o-- FMovieSceneEvaluationField
+FMovieSceneEvaluationTemplate o-- FMovieSceneEvaluationTrack
+
+FMovieSceneEvalTemplateBase <|-- FMovieSceneTrackImplementation
+FMovieSceneEvaluationTrack o-- FMovieSceneEvalTemplate
+FMovieSceneEvaluationTrack o-- FMovieSceneTrackImplementation
+FMovieSceneEvaluationTrack o-- UMovieSceneTrack 
+
+FMovieSceneEvaluationField o-- FMovieSceneEvaluationGroup
+FMovieSceneEvaluationField o-- FMovieSceneEvaluationMetaData
+FMovieSceneEvaluationMetaData o.. FMovieSceneEvaluationKey
+
+}
 @enduml
 
 @startuml
@@ -61,13 +231,48 @@ UMovieSceneSequencePlayer -> UMovieSceneSequencePlayer : UpdateTimeCursorPositio
 UMovieSceneSequencePlayer -> UMovieSceneSequencePlayer : UpdateMovieSceneInstance
 UMovieSceneSequencePlayer -> FMovieSceneRootEvaluationTemplateInstance : <b><font color=blue>Evaluate</b>
 activate FMovieSceneRootEvaluationTemplateInstance
-    FMovieSceneRootEvaluationTemplateInstance -> FMovieSceneRootEvaluationTemplateInstance : <b><font color=blue>SetupFrame</b> 
-    note right: Create <b><font color=red>FMovieSceneEvaluationGroup</b>
-    FMovieSceneRootEvaluationTemplateInstance -> FMovieSceneRootEvaluationTemplateInstance : <b><font color=blue>ConstructEvaluationPtrCacheForFrame</b> 
-    note right: Create <b><font color=red>FMovieSceneEvaluationPtrCache</b>
-    FMovieSceneRootEvaluationTemplateInstance -> FMovieSceneRootEvaluationTemplateInstance : <b><font color=blue>EvaluateGroup</b>
-    FMovieSceneRootEvaluationTemplateInstance -> FMovieSceneRootEvaluationTemplateInstance : Apply <b><font color=red>ExecutionTokens</b>
+    group Create <b><font color=red>FMovieSceneEvaluationGroup</b>
+	FMovieSceneRootEvaluationTemplateInstance -> FMovieSceneRootEvaluationTemplateInstance : <b><font color=blue>SetupFrame</b> 
+        activate FMovieSceneRootEvaluationTemplateInstance
+        FMovieSceneRootEvaluationTemplateInstance -> FMovieSceneEvaluationField : ConditionallyCompileRange
+        FMovieSceneEvaluationField -> FMovieSceneCompiler: CompileRange
+        deactivate FMovieSceneRootEvaluationTemplateInstance
+    end group
 
+    group Create <b><font color=red>FMovieSceneEvaluationPtrCache</b>
+    FMovieSceneRootEvaluationTemplateInstance -> FMovieSceneRootEvaluationTemplateInstance : <b><font color=blue>ConstructEvaluationPtrCacheForFrame</b> 
+	end group
+
+	activate FMovieSceneRootEvaluationTemplateInstance
+	deactivate FMovieSceneRootEvaluationTemplateInstance
+    group Evaluate
+    FMovieSceneRootEvaluationTemplateInstance -> FMovieSceneRootEvaluationTemplateInstance : <b><font color=blue>EvaluateGroup</b>
+	activate FMovieSceneRootEvaluationTemplateInstance
+		group 1. 收集Token
+			FMovieSceneRootEvaluationTemplateInstance -> FMovieSceneEvaluationTrack : <b><font color=blue>Evaluate(SegmentId, ...)</b>
+			FMovieSceneEvaluationTrack -> FMovieSceneEvaluationTrack : DefaultEvaluate()
+			FMovieSceneEvaluationTrack -> FMovieSceneEvaluationTrack : <b><font color=red>EvaluateStatic</b> or <b><font color=red>EvaluateSwept</b>
+			note right
+				这里有两种执行模式
+					1. EEvaluationMethod::Static --> EvaluateStatic
+					2. EEvaluationMethod::Swept --> EvaluateSwept
+			end note
+			FMovieSceneEvaluationTrack -> FMovieSceneEvalTemplate : <b><font color=red>Evaluate</b> or <b><font color=red>EvaluateSwept</b>
+		end group
+
+		group 2. 应用Token
+			FMovieSceneRootEvaluationTemplateInstance  -> FMovieSceneExecutionTokens : <b><font color=blue>Apply</b> 执行 order < 0的<b>IMovieSceneSharedExecutionToken</b> 和 <b>IMovieSceneExecutionToken</b>
+			FMovieSceneExecutionTokens -> IMovieSceneExecutionToken : <b><font color=red>Execute()</b>
+			note right: 可以继承<b>Token</b>并重写该方法自定义计算过程， 比如 <b><font color=skyblue>EventTrack</b>
+			FMovieSceneExecutionTokens -> FMovieSceneBlendingAccumulator : <b><font color=blue>Apply</b>
+			FMovieSceneBlendingAccumulator -> TBlendableTokenStack : <b><font color=blue>ComputeAndActuate</b>
+			TBlendableTokenStack -> TMovieSceneBlendingActuator : <b><font color=red>Actuate</b>
+			note right: 可以继承<b>TMovieSceneBlendingActuator</b>并重写该方法自定义计算过程， 比如 <b><font color=skyblue>SkeletalAnimationTrack</b>
+		end group
+	deactivate FMovieSceneRootEvaluationTemplateInstance
+	end group
+
+	FMovieSceneRootEvaluationTemplateInstance  -> FMovieSceneExecutionTokens : <b><font color=blue>Apply</b> 执行 order > 0 的<b>IMovieSceneSharedExecutionToken</b>
 deactivate FMovieSceneRootEvaluationTemplateInstance
 
 UMovieSceneSequencePlayer -> UMovieSceneSequencePlayer : ApplyLatentActions

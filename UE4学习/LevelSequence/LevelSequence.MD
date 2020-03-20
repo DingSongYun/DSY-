@@ -32,7 +32,7 @@ UE4的LevelSequence
         ![avatar](Resources/trackMenu.png)
     * `::BuildObjectBindingTrackMenu()`  
         ![avatar](Resources/trackBindingMenu.png)
-    * `::BuildOutlinerEditWidget()`
+    * `::BuildOutlinerEditWidget()`  
         ![avatar](Resources/trackOutlinerWidget.png)
     
     可以在这两个`Menu`里增加`AddTrack`的逻辑
@@ -262,13 +262,18 @@ UE4的LevelSequence
             `Timeline`的控制
         * `FMovieSceneContext`  
             继承自 `FMovieSceneEvaluationRange`  
-            播放过程中每次`Tick`都会产生一个Context用来给后续的计算提供集中的参数信息  
+            播放过程中每次`Tick`都会产生一个Context用来给当帧后续的计算提供集中的参数信息  
             这里比较重要的就是本次`Tick`所跨过的帧长度和帧方向
 
         * `FMovieSceneRootEvaluationTemplateInstance`
             每个`Player`都会有一个`RootEvalTemplate`, 控制着`Sequence`的动画计算  
 
-        * `FMovieSceneEvaluationTemplate` vs `FMovieSceneEvalTemplate`
+        * `FMovieSceneEvaluationTemplate` 
+            * 注意和 `FMovieSceneEvalTemplateBase`系的 区别  
+                `FMovieSceneEvaluationTemplate` 中解析并搜集`Sequencer`的所有运行时信息，对于每个`Track`都存储一个用于计算的`FMovieSceneEvaluationTrack`,
+                这个`FMovieSceneEvaluationTrack`中包含了`Track`和其中每个`Section`对应的Template(`FMovieSceneEvalTemplateBase`)  
+                所以`FMovieSceneEvaluationTemplate`中没有`Evaluate`， 而`FMovieSceneEvalTemplateBase`中有具体`Evaluate`方法，
+            * `Sequencer`到 `FMovieSceneEvaluationTemplate` 的数据流通问题  
 
 * `Object Binding`过程  
     `FMovieSceneObjectBindingID`

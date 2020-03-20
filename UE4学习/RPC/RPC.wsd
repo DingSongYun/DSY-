@@ -1,0 +1,98 @@
+@startuml
+class UNetDriver
+class UIpNetDriver
+UWorld o-- UNetDriver
+UNetDriver <|-- UIpNetDriver
+UIpNetDriver o-- FSocket
+UIpNetDriver o-- FInternetAddr
+@enduml
+
+@startuml 编辑器中开始游戏流程
+|PlayInEditor|
+note: UEditorEngine
+start
+: <b><font color=blue>::SpawnIntraProcessPIEWorlds</b>;
+: <b><font color=blue>::CreatePIEGameInstance</b>;
+|CreatePIEGameInstance|
+: <b><font color=blue>::InitializeForPlayInEditor</b>;
+if (判断当前是客户端还是服务器) then(当前是客户端)
+: 创建一个空的World,具体场景由之后服务器同步;
+else(当前是服务器)
+group <b><font color=blue>::CreatePIEWorldByDuplication</b>
+: 加载Map的Package;
+: 创建运行时场景
+        这里将创建Map中静态布置的所有Actor
+        编辑器中这一步是通过复制当前EditWorld来实现的<b><font color=blue>StaticDuplicateObject</b>;
+:<b><font color=blue>PostCreatePIEWorld</b>;
+end group
+endif
+: 做一次GC;
+: GameInstance初始化
+    <b><font color=blue>UGameInstance::Init</b>;
+: <b><font color=blue>::SetPlayInEditorWorld</b>;
+: <b><font color=blue>::StartPlayInEditorGameInstance</b>;
+|StartPlayInEditorGameInstance|
+: onStart();
+if (判断当前是客户端还是服务器) then(当前是客户端)
+    : 向服务器发起链接请求;
+else(当前是服务器)
+    : <b><font color=blue>::SpawnPlayFromHereStart</b>;
+    : 创建GameMode : <i>AuthorityGameMode</i>
+        <b><font color=blue>World::SetGameMode</b>
+        <b><font color=blue>UGameInstance::CreateGameModeForURL</b>;
+    : <b><font color=blue>::PostCreateGameModeForPIE</b>;
+    : 加载<b><font color=red>"always loaded"</b>的sub-level
+        <b><font color=blue>World::FlushLevelStreaming</b>;
+    : 创建AISystem
+        <b><font color=blue>World::CreateAISystem</b>;
+    : <b><font color=blue>World::InitializeActorsForPlay</b>;
+|InitializeActorsForPlay|
+    while(遍历场景中的Level)
+    : 逐Level执行
+        <b><font color=blue>World::InitializeNetworkActors</b>;
+    group InitializeNetworkActors
+        while(遍历Level中的Actor)
+        if (bActorSeamlessTraveled) then(false)
+            : 遍历Actor中的Component执行
+            <b><font color=blue>SetIsNetStartupComponent</b>;
+            if (是否是客户端) then(true)
+                if (Actor的<b><font color=red>bNetLoadOnClient</b>) then(false)
+                    : 在客户端删除Actor
+                        <b><font color=blue>Actor::Destroy</b>;
+                else(true)
+                    : 对于客户端Actor，交换<b><font color=red>Role 和 RemoteRole</b>
+                        <b><font color=blue>AActor::ExchangeNetRoles</b>;
+                endif
+            endif
+            : Actor的bActorSeamlessTraveled置为false;
+        endif
+        : 标记Level的变量<b><font color=red>bAlreadyInitializedNetworkActors</b>为true;
+        endwhile
+    end group
+    endwhile
+    : <b><font color=blue>::SpawnServerActors</b>
+        两个Actors列表: <b><font color=red>ServerActors & RuntimeServerActors</b>;
+    note : 这个怎么用?
+    : 初始化GameMode
+        <b><font color=blue>AGameMode::InitGame</b>;
+    : 遍历Level执行
+        <b><font color=blue>RouteActorInitialize</b>;
+    : 如果是客户端，通知服务器当前客户端Level的可见性状态
+        <b><font color=blue>APlayerController::ServerUpdateMultipleLevelsVisibility</b>;
+|StartPlayInEditorGameInstance|
+    : <b><font color=blue>World::Listen</b>;
+|World::Listen|
+    : 创建<b><font color=red>NetDriver</b>
+        <b><font color=blue>::CreateNamedNetDriven</b>;
+    group <b><font color=blue>UIpNetDriver::InitListen</b>
+        : 创建和初始化<b><font color=red>Socket</b>
+            <b><font color=blue>UIpNetDriver::CreateSocket</b>;
+        : 创建和初始化<b><font color=red>FInternetAddr</b>;
+        : <b><font color=blue>UNetDriver::InitConnectionlessHandler</b>;
+    end group
+|StartPlayInEditorGameInstance|
+    : <b><font color=blue>World::BeginPlay</b>;
+    : <b><font color=blue>::StartPIEGameInstance</b>;
+endif
+stop
+@enduml

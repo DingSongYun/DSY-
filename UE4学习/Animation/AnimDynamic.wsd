@@ -1,0 +1,148 @@
+@startuml
+
+class FAnimPhysLinkedBody
+{
+	+ FAnimPhysBoneRigidBody RigidBody;
+	+ FAnimPhysBoneRigidBody* ParentBody;
+}
+
+class FAnimPhysBoneRigidBody
+{
+    + FAnimPhysRigidBody PhysBody;
+    + FBoneReference BoundBone;
+}
+
+
+class FAnimPhysState #MediumSpringGreen
+{
+    + FAnimPhysPose Pose
+    == <font color=red> 动量 & 角动量 </font> ==
+    + FVector <b><font color=red>LinearMomentum</b>
+    + FVector <b><font color=red>AngularMomentum</b>
+}
+
+class FAnimPhysRigidBody #MediumSpringGreen
+{
+    + flaot Mass
+    + FAnimPhysWindData	WindData
+    + TArray<FAnimPhysShape> Shapes
+    -- 阻尼 --
+    bool    bLinearDampingOverriden
+    float   LinearDamping
+    bool    bAngularDampingOverriden
+    float   AngularDamping
+}
+note left: 核心的物理模拟数据
+
+class FAnimPhysPose
+{
+    + FVector Position
+    + FQuat Orientation
+}
+
+class FAnimPhysWindData
+{
+    + float BodyWindScale
+    + float WindSpeed
+    + FVector WindDirection
+    + float WindAdaption
+}
+note left: 风的模拟数据
+
+class FAnimPhysShape
+{
+
+}
+note right: 物理形状信息 -- Box形状
+
+FAnimPhysRigidBody --|> FAnimPhysState
+FAnimPhysRigidBody o-- FAnimPhysWindData
+FAnimPhysRigidBody o-- FAnimPhysShape
+
+FAnimPhysLinkedBody o-- FAnimPhysBoneRigidBody
+FAnimPhysBoneRigidBody o-- FAnimPhysRigidBody
+FAnimPhysBoneRigidBody o-- FBoneReference
+
+FAnimPhysState o-- FAnimPhysPose
+
+@enduml
+
+@startuml Physic Simulate
+|EvaluateSkeletalControl_AnyThread|
+start
+: InitPhysics;
+note right: 初始化物理数据
+|InitPhysics|
+:构建 BoundBone 到 ChainEnd 的骨骼链;
+while(遍历骨骼链上的每个骨骼)
+: 基于配置的 <b><font color=red>BoxExtends</b>构建物理形状;
+note right
+    这里只支持Box形状
+    <b><font color=blue>FAnimPhysShape::MakeBox</b>
+end note
+: 基于配置的 <b><font color=red>LocalJointOffset</b> 偏移Box的位置;
+: 构建骨骼-物理信息(<b><font color=red>FAnimPhysLinkedBody</b>)放入<b><font color=red>Bodies</b>数组中,
+    纯物理信息数据放入<b><font color=red>BaseBodyPtrs</b>数组中;
+note right
+    需要注意的是 FAnimPhysRigidBody 构造过程会做两件事
+        1. 计算质心 <b><font color=blue>FAnimPhys::CalculateCenterOfMass</b>
+        2. 计算张量 <b><font color=blue>FAnimPhys::CalculateInertia</b>
+end note
+endwhile
+|EvaluateSkeletalControl_AnyThread|
+: 处理骨骼信息有变动的骨骼对应的物理数据(<b><font color=red>BodiesToReset</b>);
+: 变换重力到模拟空间(可配置);
+: 计算组件(SkeletalComponent)当帧加速度;
+if (是否需要细分物理Tick间隔)then(是)
+note right
+    细分物理Tick可以确保每次物理计算花的时间是一致
+    否则会根据帧的Tick时间计算物理，这个时间是浮动的
+end note
+: 根据一个固定可配置的物理刷新间隔来划分当前帧时间，
+    计算当帧需要做几次物理计算<b><font color=red>NumIters</b>，
+    不满足一次物理计算的时间累加到<b><font color=green>TimeDebt</b>中,
+    在下次帧Tick时加上这个时间重新计算物理刷新次数;
+while(遍历当帧需要做物理计算的次数: <b><font color=red>NumIters</b>)
+: 处理Constrain, <b><font color=blue>::UpdateLimits</b>;
+: 物理计算 <b><font color=blue>FAnimPhys::PhysicsUpdate</b>;
+|PhysicsUpdate|
+: <b><font color=blue>::InitializeBodyVelocity</b>;
+|InitializeBodyVelocity|
+: 通过阻尼对Body的动量和角动量进行衰减;
+note right
+    阻尼衰减函数:
+        <b><font color=red>衰减系数 = (1 - 阻尼Damping) ^ dt</b>
+end note
+: 计算重力，叠加到动量;
+: 处理风，计算风力， 叠加到动量;
+note right
+    风力计算
+        <b><font color=red>F = WindVelocity * WindAdaption</b>
+        WindAdaption 是个 0 - 2 的随机数, 用来模拟风的不连续性
+end note
+: 张量(Tensor)变换到World Space;
+|PhysicsUpdate|
+: <b><font color=red>ExternalForce</b> 如果有配置该参数，加到动量中;
+: 处理组件加速度, 加到动量中;
+: 处理弹簧;
+: Constrain处理: pre-limit;
+: (逐Body)根据动量和角动量计算物理位置: <b><font color=blue>FAnimPhys::CalculateNextPose</b>;
+note right
+    位置计算
+        p = m * v
+        s = s0 + v * dt = s0 + (p / m) * dt
+    方向计算
+        RK: Rotational Kinetic
+end note
+: Constrain处理: post-limit;
+: (逐Body)根据物理位置更新骨骼位置<b><font color=blue>FAnimPhys::UpdatePose</b>;
+endwhile
+|EvaluateSkeletalControl_AnyThread|
+else(否，不做细分物理Tick的情况, 没帧处理一次物理计算)
+: 处理Constrain, <b><font color=blue>::UpdateLimits</b>;
+: 物理计算 <b><font color=blue>FAnimPhys::PhysicsUpdate</b>;
+endif
+|EvaluateSkeletalControl_AnyThread|
+: 将计算之后的骨骼信息返回动画系统中;
+stop
+@enduml
